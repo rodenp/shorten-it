@@ -5,7 +5,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { BarChart3, Link2 } from 'lucide-react';
 
 export default function DashboardPage() {
-  const recentLinks = mockLinks.slice(0, 3); // Show top 3 recent links
+  const recentLinks = mockLinks.slice(0, Math.min(3, mockLinks.length)); // Show top 3 or fewer if less mock data
 
   return (
     <div className="container mx-auto py-2">

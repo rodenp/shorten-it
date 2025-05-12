@@ -13,7 +13,7 @@ import { Button } from '@/components/ui/button';
 
 export default function AnalyticsPage() {
   const [selectedLinkId, setSelectedLinkId] = useState<string | null>(mockLinks.length > 0 ? mockLinks[0].id : null);
-  const [timeRange, setTimeRange] = useState<string>('7days'); // '7days', '30days', '90days'
+  const [timeRange, setTimeRange] = useState<string>('30days'); // Default to 30 days '7days', '30days', '90days'
 
   const selectedLink = useMemo(() => mockLinks.find(link => link.id === selectedLinkId), [selectedLinkId]);
   
@@ -23,9 +23,13 @@ export default function AnalyticsPage() {
     return getMockAnalyticsForLink(selectedLink.id, days);
   }, [selectedLink, timeRange]);
 
-  const totalClicksAllLinks = mockLinks.reduce((sum, link) => sum + link.clickCount, 0);
+  const totalClicksAllLinks = useMemo(() => mockLinks.reduce((sum, link) => sum + link.clickCount, 0), []);
 
-  const topPerformingLink = mockLinks.sort((a,b) => b.clickCount - a.clickCount)[0];
+  const topPerformingLink = useMemo(() => {
+    if (mockLinks.length === 0) return null;
+    return [...mockLinks].sort((a,b) => b.clickCount - a.clickCount)[0];
+  }, []);
+
 
   const exampleBreakdownData = [
     { category: "Top Referrers", items: [{name: "google.com", value: "40%"}, {name: "twitter.com", value: "25%"}, {name: "direct", value: "15%"}] },
@@ -113,10 +117,13 @@ export default function AnalyticsPage() {
               data={chartData} 
               chartType="line"
               title={`Clicks for: ${selectedLink.title || selectedLink.shortUrl}`}
-              description={`Showing clicks for the last ${timeRange.replace('days', '')} days.`}
+              description={`Showing clicks for the selected period.`}
             />
           ) : (
+             mockLinks.length > 0 ? 
             <p className="text-muted-foreground text-center py-10">Please select a link to view its analytics.</p>
+            :
+            <p className="text-muted-foreground text-center py-10">No links available to analyze. Create some links first!</p>
           )}
         </CardContent>
       </Card>
@@ -164,7 +171,7 @@ export default function AnalyticsPage() {
                     </TableRow>
                 </TableHeader>
                 <TableBody>
-                    {mockLinks.slice(0,5).map(link => ( // Show top 5 for brevity
+                    {mockLinks.slice(0, Math.min(5, mockLinks.length)).map(link => ( 
                         <TableRow key={link.id}>
                             <TableCell>
                                 <div className="font-medium">{link.title || link.shortUrl}</div>
@@ -179,6 +186,13 @@ export default function AnalyticsPage() {
                             </TableCell>
                         </TableRow>
                     ))}
+                    {mockLinks.length === 0 && (
+                        <TableRow>
+                            <TableCell colSpan={4} className="text-center text-muted-foreground py-10">
+                                No links created yet.
+                            </TableCell>
+                        </TableRow>
+                    )}
                 </TableBody>
             </Table>
              {mockLinks.length > 5 && (

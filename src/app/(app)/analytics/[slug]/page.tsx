@@ -21,8 +21,8 @@ export default function LinkSpecificAnalyticsPage() {
     notFound();
   }
   
-  const chartData = getMockAnalyticsForLink(link.id, 30);
-  const linkSpecificEvents = mockAnalyticsEvents.filter(event => event.linkId === link.id).slice(0, 5); // Example recent clicks
+  const chartData = getMockAnalyticsForLink(link.id, 30); // Use 30 days for individual link trend
+  const linkSpecificEvents = mockAnalyticsEvents.filter(event => event.linkId === link.id).slice(0, 5); 
 
   return (
      <div className="container mx-auto py-2">
@@ -176,7 +176,7 @@ export default function LinkSpecificAnalyticsPage() {
                             <TableCell>{format(new Date(event.timestamp), "MMM d, yyyy HH:mm")}</TableCell>
                             <TableCell>{event.country || 'N/A'}</TableCell>
                             <TableCell>{event.deviceType ? event.deviceType.charAt(0).toUpperCase() + event.deviceType.slice(1) : 'N/A'} ({event.browser || 'N/A'})</TableCell>
-                            <TableCell className="truncate max-w-xs" title={event.referrer}>{event.referrer || 'Direct'}</TableCell>
+                            <TableCell className="truncate max-w-xs" title={event.referrer || undefined}>{event.referrer || 'Direct'}</TableCell>
                         </TableRow>
                     ))}
                      {linkSpecificEvents.length === 0 && (
