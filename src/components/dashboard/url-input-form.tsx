@@ -27,7 +27,8 @@ import { useEffect, useState } from 'react';
 import { Slider } from '@/components/ui/slider';
 
 const getShortenerDomain = (): string => {
-  return process.env.NEXT_PUBLIC_SHORTENER_DOMAIN || 'lnk.wiz';
+  // Prefer environment variable, fallback to a default if not set
+  return process.env.NEXT_PUBLIC_SHORTENER_DOMAIN || 'linkyle.com';
 };
 
 
@@ -130,7 +131,7 @@ export function UrlInputForm({ onLinkAdded }: UrlInputFormProps) {
     defaultValues,
     mode: 'onChange',
   });
-  const [shortenerDomain, setShortenerDomain] = useState('lnk.wiz');
+  const [shortenerDomain, setShortenerDomain] = useState('linkyle.com');
 
 
   useEffect(() => {

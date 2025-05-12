@@ -2,7 +2,8 @@
 import type { LinkItem, AnalyticEvent, CustomDomain, TeamMember, LinkTarget, LinkGroup } from '@/types';
 
 const getShortenerDomain = (): string => {
-  return process.env.NEXT_PUBLIC_SHORTENER_DOMAIN || 'lnk.wiz';
+  // Prefer environment variable, fallback to a default if not set
+  return process.env.NEXT_PUBLIC_SHORTENER_DOMAIN || 'linkyle.com';
 };
 
 
