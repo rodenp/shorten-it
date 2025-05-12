@@ -10,58 +10,15 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
   mockTeamMembers,
-  // getMockCustomDomains, // No longer needed here
-  // addMockCustomDomain, // No longer needed here
-  // deleteMockCustomDomain, // No longer needed here
-  // toggleVerifyMockCustomDomain, // No longer needed here
-  // updateMockCustomDomainName, // No longer needed here
 } from "@/lib/mock-data";
-import type { TeamMember } from "@/types"; // CustomDomain type will be in its component
+import type { TeamMember } from "@/types";
 import { Globe, Users, KeyRound, PlusCircle, Trash2, Edit, Target, UserCircle, Palette, CheckCircle, XCircle, AlertTriangle } from "lucide-react";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Separator } from "@/components/ui/separator";
 import { Switch } from "@/components/ui/switch";
-// import { useToast } from "@/hooks/use-toast"; // No longer needed here if CustomDomainsSettings handles its own toasts
-// AlertDialog and Dialog imports for CustomDomainsSettings are now in that component.
 import { CustomDomainsSettings } from "@/components/settings/custom-domains-settings";
+import { ProfileSettings } from "@/components/settings/profile-settings";
 
-
-function ProfileSettings() {
-  return (
-    <Card>
-      <CardHeader>
-        <CardTitle>Profile Settings</CardTitle>
-        <CardDescription>Update your personal information and preferences.</CardDescription>
-      </CardHeader>
-      <CardContent className="space-y-4">
-        <div className="flex items-center space-x-4">
-            <Avatar className="h-20 w-20">
-                <AvatarImage src="https://picsum.photos/seed/user-settings/100/100" data-ai-hint="profile picture"/>
-                <AvatarFallback>LW</AvatarFallback>
-            </Avatar>
-            <Button variant="outline">Change Avatar</Button>
-        </div>
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div>
-                <Label htmlFor="name">Full Name</Label>
-                <Input id="name" defaultValue="Current User" />
-            </div>
-            <div>
-                <Label htmlFor="email">Email Address</Label>
-                <Input id="email" type="email" defaultValue="user@linkwiz.com" />
-            </div>
-        </div>
-        <div>
-            <Label htmlFor="password">New Password</Label>
-            <Input id="password" type="password" placeholder="Leave blank to keep current password" />
-        </div>
-         <Button>Update Profile</Button>
-      </CardContent>
-    </Card>
-  )
-}
-
-// CustomDomainsSettings is now imported
 
 function TeamCollaborationSettings() {
   return (

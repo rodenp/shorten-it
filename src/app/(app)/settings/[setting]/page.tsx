@@ -7,8 +7,9 @@ import { Button } from '@/components/ui/button';
 import Link from 'next/link';
 import { ArrowLeft, Settings, Info } from 'lucide-react';
 import { CustomDomainsSettings } from '@/components/settings/custom-domains-settings';
+import { ProfileSettings } from '@/components/settings/profile-settings'; 
 // Import other specific settings components here as they are created
-// import { ProfileSettings } from '@/components/settings/profile-settings'; 
+// import { TeamCollaborationSettings } from '@/components/settings/team-collaboration-settings'; 
 // etc.
 
 export default function SpecificSettingPage() {
@@ -25,8 +26,8 @@ export default function SpecificSettingPage() {
     switch (settingName) {
       case 'domains':
         return <CustomDomainsSettings />;
-      // case 'profile':
-      //   return <ProfileSettings />; 
+      case 'profile':
+        return <ProfileSettings />; 
       // case 'team':
       //   return <TeamCollaborationSettings />;
       // case 'retargeting':
