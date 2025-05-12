@@ -1,40 +1,63 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect, useMemo, useCallback } from 'react';
 import { LinkCard } from '@/components/dashboard/link-card';
-import { mockLinks } from '@/lib/mock-data';
+import { getMockLinks, deleteMockLink } from '@/lib/mock-data';
 import type { LinkItem } from '@/types';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Button } from '@/components/ui/button';
 import { ListFilter, Search, PlusCircle, ArrowDownUp } from 'lucide-react';
 import Link from 'next/link';
+import { useToast } from '@/hooks/use-toast';
 
 export default function MyLinksPage() {
+  const [allLinks, setAllLinks] = useState<LinkItem[]>([]);
   const [searchTerm, setSearchTerm] = useState('');
   const [sortBy, setSortBy] = useState('createdAt_desc'); // e.g., 'clicks_desc', 'title_asc'
+  const { toast } = useToast();
+
+  const fetchLinks = useCallback(() => {
+    setAllLinks(getMockLinks());
+  }, []);
+
+  useEffect(() => {
+    fetchLinks();
+  }, [fetchLinks]);
+
+  const handleLinkDelete = useCallback((linkId: string) => {
+    if (deleteMockLink(linkId)) {
+      toast({ title: 'Link Deleted', description: 'The link has been successfully deleted.', variant: 'default' });
+      fetchLinks(); // Refresh the list
+    } else {
+      toast({ title: 'Error Deleting Link', description: 'Could not delete the link.', variant: 'destructive' });
+    }
+  }, [fetchLinks, toast]);
   
-  const filteredAndSortedLinks = mockLinks
-    .filter(link => 
-      link.title?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      link.shortUrl.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      link.originalUrl.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      link.tags?.some(tag => tag.toLowerCase().includes(searchTerm.toLowerCase()))
-    )
-    .sort((a, b) => {
-      const [key, order] = sortBy.split('_');
-      let comparison = 0;
-      
-      if (key === 'createdAt') {
-        comparison = new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
-      } else if (key === 'clicks') {
-        comparison = b.clickCount - a.clickCount;
-      } else if (key === 'title') {
-        comparison = (a.title || '').localeCompare(b.title || '');
-      }
-      
-      return order === 'desc' ? comparison : -comparison;
-    });
+  const filteredAndSortedLinks = useMemo(() => {
+    return [...allLinks] // Create a new array for sorting
+      .filter(link => 
+        link.title?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        link.shortUrl.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        link.originalUrl.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        link.slug.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        link.tags?.some(tag => tag.toLowerCase().includes(searchTerm.toLowerCase()))
+      )
+      .sort((a, b) => {
+        const [key, order] = sortBy.split('_');
+        let comparison = 0;
+        
+        if (key === 'createdAt') {
+          comparison = new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
+        } else if (key === 'clicks') {
+          comparison = (b.clickCount || 0) - (a.clickCount || 0);
+        } else if (key === 'title') {
+          comparison = (a.title || a.slug || '').localeCompare(b.title || b.slug || '');
+        }
+        
+        return order === 'desc' ? comparison : -comparison;
+      });
+  }, [allLinks, searchTerm, sortBy]);
 
   return (
     <div className="container mx-auto py-2">
@@ -60,7 +83,7 @@ export default function MyLinksPage() {
             <Input
               id="search-links"
               type="text"
-              placeholder="Search by title, URL, or tag..."
+              placeholder="Search by title, URL, slug, or tag..."
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
               className="w-full"
@@ -86,7 +109,7 @@ export default function MyLinksPage() {
             </Select>
           </div>
            <div>
-             <Button variant="outline" className="w-full">
+             <Button variant="outline" className="w-full mt-auto" onClick={() => alert('Filter functionality not yet implemented.')}>
                 <ListFilter className="mr-2 h-4 w-4" /> Filters
              </Button>
            </div>
@@ -96,15 +119,20 @@ export default function MyLinksPage() {
       {filteredAndSortedLinks.length > 0 ? (
         <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
           {filteredAndSortedLinks.map((link) => (
-            <LinkCard key={link.id} link={link} />
+            <LinkCard key={link.id} link={link} onDelete={() => handleLinkDelete(link.id)} />
           ))}
         </div>
       ) : (
         <div className="text-center py-10">
           <Search className="mx-auto h-12 w-12 text-muted-foreground mb-4" />
-          <h3 className="text-xl font-semibold text-foreground">No Links Found</h3>
+          <h3 className="text-xl font-semibold text-foreground">
+            {allLinks.length === 0 ? "No Links Created Yet" : "No Links Found"}
+          </h3>
           <p className="text-muted-foreground">
-            Your search for "{searchTerm}" did not match any links. Try a different term or create a new link.
+            {allLinks.length === 0 
+              ? "Create your first link from the dashboard." 
+              : `Your search for "${searchTerm}" did not match any links. Try a different term.`
+            }
           </p>
         </div>
       )}

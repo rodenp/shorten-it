@@ -1,11 +1,31 @@
+'use client';
+
+import { useState, useEffect, useCallback } from 'react';
 import { UrlInputForm } from '@/components/dashboard/url-input-form';
 import { LinkCard } from '@/components/dashboard/link-card';
-import { mockLinks } from '@/lib/mock-data';
+import { getMockLinks, getLinksCount, getTotalClicks } from '@/lib/mock-data';
+import type { LinkItem } from '@/types';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { BarChart3, Link2 } from 'lucide-react';
 
 export default function DashboardPage() {
-  const recentLinks = mockLinks.slice(0, Math.min(3, mockLinks.length)); // Show top 3 or fewer if less mock data
+  const [recentLinks, setRecentLinks] = useState<LinkItem[]>([]);
+  const [totalLinksCount, setTotalLinksCount] = useState(0);
+  const [totalAllClicks, setTotalAllClicks] = useState(0);
+
+  const refreshDashboardData = useCallback(() => {
+    const allLinks = getMockLinks();
+    const sortedRecentLinks = [...allLinks]
+      .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
+      .slice(0, 3);
+    setRecentLinks(sortedRecentLinks);
+    setTotalLinksCount(getLinksCount());
+    setTotalAllClicks(getTotalClicks());
+  }, []);
+
+  useEffect(() => {
+    refreshDashboardData();
+  }, [refreshDashboardData]);
 
   return (
     <div className="container mx-auto py-2">
@@ -16,7 +36,7 @@ export default function DashboardPage() {
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         <div className="lg:col-span-2">
-          <UrlInputForm />
+          <UrlInputForm onLinkAdded={refreshDashboardData} />
         </div>
 
         <div className="space-y-6">
@@ -31,12 +51,12 @@ export default function DashboardPage() {
                 <CardContent className="space-y-3">
                     <div className="flex justify-between items-center">
                         <span className="text-muted-foreground">Total Links</span>
-                        <span className="font-semibold text-lg">{mockLinks.length}</span>
+                        <span className="font-semibold text-lg">{totalLinksCount}</span>
                     </div>
                     <div className="flex justify-between items-center">
                         <span className="text-muted-foreground">Total Clicks</span>
                         <span className="font-semibold text-lg">
-                            {mockLinks.reduce((sum, link) => sum + link.clickCount, 0).toLocaleString()}
+                            {totalAllClicks.toLocaleString()}
                         </span>
                     </div>
                      <div className="flex justify-between items-center">

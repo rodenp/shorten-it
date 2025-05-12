@@ -15,13 +15,16 @@ import {
 } from '@/components/ui/form';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
-import { Checkbox } from '@/components/ui/checkbox';
+// Checkbox seems unused, can be removed if not needed later.
+// import { Checkbox } from '@/components/ui/checkbox'; 
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { useToast } from '@/hooks/use-toast';
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/components/ui/accordion';
 import { Switch } from '@/components/ui/switch';
-import { Label } from '@/components/ui/label';
+// Label seems unused directly, FormLabel is used.
+// import { Label } from '@/components/ui/label';
 import { Shuffle, ShieldCheck, MoveDiagonal, FlaskConical, Target, Tag, Settings2, Link as LinkIcon } from 'lucide-react';
+import { addMockLink } from '@/lib/mock-data'; // Updated import path
 
 const urlInputFormSchema = z.object({
   urls: z.string().min(1, { message: 'Please enter at least one URL.' })
@@ -29,18 +32,19 @@ const urlInputFormSchema = z.object({
       const lines = value.split('\n').map(line => line.trim()).filter(line => line.length > 0);
       return lines.every(line => {
         try {
-          new URL(line);
-          return true;
+          // Basic URL validation, can be improved
+          const url = new URL(line);
+          return url.protocol === "http:" || url.protocol === "https:";
         } catch (_) {
           return false;
         }
       });
-    }, { message: 'One or more URLs are invalid. Please enter valid URLs, one per line.' }),
+    }, { message: 'One or more URLs are invalid. Please enter valid URLs (starting with http:// or https://), one per line.' }),
   customAlias: z.string().optional().refine(value => !value || /^[a-zA-Z0-9_-]+$/.test(value), {
     message: "Alias can only contain letters, numbers, underscores, and hyphens.",
   }),
   title: z.string().optional(),
-  tags: z.string().optional(),
+  tags: z.string().optional(), // Will be comma-separated string
   enableRotation: z.boolean().default(false).optional(),
   enableCloaking: z.boolean().default(false).optional(),
   enableDeepLinking: z.boolean().default(false).optional(),
@@ -61,9 +65,20 @@ const defaultValues: Partial<UrlInputFormValues> = {
   enableDeepLinking: false,
   enableABTesting: false,
   enableRetargeting: false,
+  deepLinkIOS: '',
+  deepLinkAndroid: '',
+  abTestVariantBUrl: '',
+  retargetingPixelId: '',
+  customAlias: '',
+  title: '',
+  tags: '',
 };
 
-export function UrlInputForm() {
+interface UrlInputFormProps {
+  onLinkAdded?: () => void;
+}
+
+export function UrlInputForm({ onLinkAdded }: UrlInputFormProps) {
   const { toast } = useToast();
   const form = useForm<UrlInputFormValues>({
     resolver: zodResolver(urlInputFormSchema),
@@ -72,19 +87,51 @@ export function UrlInputForm() {
   });
 
   async function onSubmit(data: UrlInputFormValues) {
-    // Simulate API call
-    await new Promise(resolve => setTimeout(resolve, 1000));
-    console.log(data);
-    toast({
-      title: 'Links Submitted!',
-      description: (
-        <pre className="mt-2 w-[340px] rounded-md bg-slate-950 p-4">
-          <code className="text-white">{JSON.stringify(data, null, 2)}</code>
-        </pre>
-      ),
-      variant: 'default',
+    // Simulate API call / processing
+    await new Promise(resolve => setTimeout(resolve, 300));
+
+    const urlList = data.urls.split('\n').map(url => url.trim()).filter(Boolean);
+    let createdCount = 0;
+
+    urlList.forEach(url => {
+      try {
+        addMockLink({
+          originalUrl: url,
+          customAlias: data.customAlias, // Note: customAlias will be same for all if multiple URLs
+          title: data.title,
+          tags: data.tags,
+          enableRotation: data.enableRotation,
+          enableCloaking: data.enableCloaking,
+          enableDeepLinking: data.enableDeepLinking,
+          deepLinkIOS: data.deepLinkIOS,
+          deepLinkAndroid: data.deepLinkAndroid,
+          enableABTesting: data.enableABTesting,
+          abTestVariantBUrl: data.abTestVariantBUrl,
+          enableRetargeting: data.enableRetargeting,
+          retargetingPixelId: data.retargetingPixelId,
+        });
+        createdCount++;
+      } catch (error) {
+        console.error("Error adding link:", error);
+        // Optionally, show a more specific error toast
+      }
     });
-    form.reset();
+    
+    if (createdCount > 0) {
+      toast({
+        title: `${createdCount} Link${createdCount > 1 ? 's' : ''} Created!`,
+        description: `Successfully generated ${createdCount} short link${createdCount > 1 ? 's' : ''}.`,
+        variant: 'default',
+      });
+      form.reset();
+      onLinkAdded?.();
+    } else {
+       toast({
+        title: 'Failed to Create Links',
+        description: 'Could not create any links. Please check the URLs and try again.',
+        variant: 'destructive',
+      });
+    }
   }
 
   return (
@@ -104,7 +151,7 @@ export function UrlInputForm() {
               name="urls"
               render={({ field }) => (
                 <FormItem>
-                  <FormLabel>URLs (one per line)</FormLabel>
+                  <FormLabel>URLs (one per line, e.g., https://example.com)</FormLabel>
                   <FormControl>
                     <Textarea
                       placeholder="https://example.com/my-long-url-1&#10;https://example.com/my-long-url-2"
@@ -113,7 +160,7 @@ export function UrlInputForm() {
                     />
                   </FormControl>
                   <FormDescription>
-                    Enter one or more URLs. If multiple URLs are provided and URL Rotation is not enabled, the first URL will be used as primary.
+                    Enter one or more URLs. If multiple URLs are provided and URL Rotation is not enabled, a separate short link will be created for each URL using other settings.
                   </FormDescription>
                   <FormMessage />
                 </FormItem>
@@ -135,6 +182,7 @@ export function UrlInputForm() {
                         <FormControl>
                           <Input placeholder="my-cool-link" {...field} />
                         </FormControl>
+                         <FormDescription>If creating multiple links, alias applies to the first URL only, or is ignored if blank.</FormDescription>
                         <FormMessage />
                       </FormItem>
                     )}
@@ -148,7 +196,7 @@ export function UrlInputForm() {
                         <FormControl>
                           <Input placeholder="e.g., Summer Campaign Landing Page" {...field} />
                         </FormControl>
-                        <FormDescription>For your internal reference.</FormDescription>
+                        <FormDescription>For your internal reference. Applies to all created links.</FormDescription>
                         <FormMessage />
                       </FormItem>
                     )}
@@ -162,6 +210,7 @@ export function UrlInputForm() {
                         <FormControl>
                           <Input placeholder="marketing, promo, q3" {...field} />
                         </FormControl>
+                         <FormDescription>Applies to all created links.</FormDescription>
                         <FormMessage />
                       </FormItem>
                     )}
@@ -171,7 +220,7 @@ export function UrlInputForm() {
 
               <AccordionItem value="advanced-features">
                 <AccordionTrigger className="text-base font-medium hover:no-underline">
-                  <FlaskConical className="mr-2 h-5 w-5" /> Advanced Features
+                  <FlaskConical className="mr-2 h-5 w-5" /> Advanced Features (Apply to all created links)
                 </AccordionTrigger>
                 <AccordionContent className="pt-4 space-y-6">
                   <FormField
@@ -182,7 +231,7 @@ export function UrlInputForm() {
                         <div className="space-y-0.5">
                           <FormLabel className="flex items-center"><Shuffle className="mr-2 h-4 w-4" />URL Rotation</FormLabel>
                           <FormDescription>
-                            Rotate between the URLs provided above.
+                            Rotate between the URLs provided above (Not fully implemented in this mock version).
                           </FormDescription>
                         </div>
                         <FormControl>
@@ -233,7 +282,7 @@ export function UrlInputForm() {
                             />
                           </FormControl>
                         </div>
-                        {field.value && (
+                        {form.watch('enableDeepLinking') && ( // use form.watch to react to changes
                           <div className="mt-4 space-y-2">
                             <FormField
                               control={form.control}
@@ -269,17 +318,18 @@ export function UrlInputForm() {
                             <div className="space-y-0.5">
                             <FormLabel className="flex items-center"><FlaskConical className="mr-2 h-4 w-4" />A/B Testing</FormLabel>
                             <FormDescription>
-                                Test multiple destination URLs. Primary URL is Variant A.
+                                Test multiple destination URLs. Primary URL from list is Variant A. (URL Rotation must be off).
                             </FormDescription>
                             </div>
                             <FormControl>
                             <Switch
                                 checked={field.value}
                                 onCheckedChange={field.onChange}
+                                disabled={form.watch('enableRotation')} // Disable if rotation is on
                             />
                             </FormControl>
                         </div>
-                        {field.value && (
+                        {form.watch('enableABTesting') && !form.watch('enableRotation') && (
                             <FormField
                             control={form.control}
                             name="abTestVariantBUrl"
@@ -287,6 +337,7 @@ export function UrlInputForm() {
                                 <FormItem className="mt-4">
                                 <FormLabel>Variant B URL</FormLabel>
                                 <FormControl><Input placeholder="https://example.com/variant-b" {...variantBField} /></FormControl>
+                                 <FormDescription>If multiple URLs in main input, A/B test applies to the first URL.</FormDescription>
                                 </FormItem>
                             )}
                             />
@@ -313,13 +364,13 @@ export function UrlInputForm() {
                             />
                             </FormControl>
                         </div>
-                        {field.value && (
+                        {form.watch('enableRetargeting') && (
                             <FormField
                             control={form.control}
                             name="retargetingPixelId"
                             render={({ field: pixelField }) => (
                                 <FormItem className="mt-4">
-                                <FormLabel>Pixel ID (e.g., Facebook Pixel)</FormLabel>
+                                <FormLabel>Pixel ID (e.g., Facebook Pixel ID)</FormLabel>
                                 <FormControl><Input placeholder="Enter Pixel ID" {...pixelField} /></FormControl>
                                 </FormItem>
                             )}
@@ -333,7 +384,7 @@ export function UrlInputForm() {
             </Accordion>
           </CardContent>
           <CardFooter>
-            <Button type="submit" className="w-full md:w-auto" disabled={form.formState.isSubmitting}>
+            <Button type="submit" className="w-full md:w-auto" disabled={form.formState.isSubmitting || !form.formState.isValid && form.formState.isSubmitted}>
               {form.formState.isSubmitting ? 'Processing...' : 'Generate Links'}
             </Button>
           </CardFooter>

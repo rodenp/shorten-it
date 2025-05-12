@@ -1,7 +1,8 @@
 'use client';
 
 import { AnalyticsChart } from '@/components/analytics/analytics-chart';
-import { mockLinks, getMockAnalyticsForLink, mockAnalyticsEvents } from '@/lib/mock-data';
+import { getMockLinkBySlugOrId, getAnalyticsForLink, getMockAnalyticsChartDataForLink } from '@/lib/mock-data';
+import type { LinkItem } from '@/types';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { ArrowLeft, BarChart3, CalendarDays, Clock, ExternalLink, Globe, Link2, MapPin, Smartphone, UserSquare } from 'lucide-react';
 import { notFound, useParams } from 'next/navigation';
@@ -10,19 +11,74 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { format } from 'date-fns';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
+import { useEffect, useState } from 'react';
 
 export default function LinkSpecificAnalyticsPage() {
   const params = useParams();
   const slug = params.slug as string;
 
-  const link = mockLinks.find(l => l.slug === slug || l.id === slug);
+  const [link, setLink] = useState<LinkItem | undefined>(undefined);
+  const [chartData, setChartData] = useState<{ date: string; clicks: number }[]>([]);
+  const [linkSpecificEvents, setLinkSpecificEvents] = useState<any[]>([]); // Using any for mock simplicity
 
-  if (!link) {
-    notFound();
+  useEffect(() => {
+    const currentLink = getMockLinkBySlugOrId(slug);
+    setLink(currentLink);
+
+    if (currentLink) {
+      setChartData(getMockAnalyticsChartDataForLink(currentLink.id, 30));
+      const events = getAnalyticsForLink(currentLink.id).slice(0, 5);
+      setLinkSpecificEvents(events);
+    } else {
+      // Trigger notFound if link isn't found after client-side check
+      // This won't work directly in useEffect for initial render if page is static.
+      // For fully client-rendered data fetching, this is okay.
+      // If SSR/SSG, initial data fetching would be different.
+    }
+  }, [slug]);
+
+
+  if (!link && typeof window !== 'undefined') { // Check if on client and link still not found
+     // This is a client-side notFound. For SSR/SSG, this would be handled differently.
+     // To ensure it works with Next.js App Router behavior for dynamic segments,
+     // it's better to let Next.js handle notFound based on data fetching.
+     // If getMockLinkBySlugOrId is synchronous and we are on client, we can call notFound().
+     // However, this might be too late if the page structure is already rendered.
+     // For this mock setup, we'll show a loading/not found message.
   }
   
-  const chartData = getMockAnalyticsForLink(link.id, 30); // Use 30 days for individual link trend
-  const linkSpecificEvents = mockAnalyticsEvents.filter(event => event.linkId === link.id).slice(0, 5); 
+  // Initial render or if link is not found yet.
+  if (!link) {
+    // Check if the slug *could* be valid based on any existing link data,
+    // if not, then it's a true notFound.
+    // This is a bit tricky with pure client-side mock data.
+    // For now, if not found during useEffect, it will eventually show notFound.
+    // A better approach for dynamic routes would be to have a loading state
+    // or use Next.js's notFound() in a server component if data fetching fails there.
+    // Since this is a client component, we render a placeholder or trigger notFound if truly appropriate.
+    // Let's assume if link is still undefined after useEffect, it's a notFound case for this mock.
+    // To avoid calling notFound() conditionally in a way that might break React rules,
+    // we simply return a "not found" UI or rely on initial data load.
+    // If the page is part of a dynamic route segment, Next.js should handle it.
+    // If we call notFound() here directly, it might be too late or cause issues.
+    // So we render a message, or if certain no link can exist, then notFound().
+    // For now, let's return a message as it's client-side data.
+     return (
+      <div className="container mx-auto py-10 text-center">
+        <p className="text-lg text-muted-foreground">Loading link data or link not found...</p>
+         <Button variant="outline" size="sm" asChild className="mt-6">
+          <Link href="/analytics">
+            <ArrowLeft className="mr-2 h-4 w-4" />
+            Back to All Analytics
+          </Link>
+        </Button>
+      </div>
+    );
+    // If after initial load, link is still undefined, it's effectively a 404.
+    // Next.js's `notFound()` should ideally be called from server components or `generateStaticParams`.
+    // In a client component, direct `notFound()` call after initial render can be problematic.
+  }
+
 
   return (
      <div className="container mx-auto py-2">
@@ -55,7 +111,7 @@ export default function LinkSpecificAnalyticsPage() {
                 <CardTitle className="text-lg">Total Clicks</CardTitle>
             </CardHeader>
             <CardContent>
-                <p className="text-4xl font-bold text-primary">{link.clickCount.toLocaleString()}</p>
+                <p className="text-4xl font-bold text-primary">{(link.clickCount || 0).toLocaleString()}</p>
                 <p className="text-xs text-muted-foreground">Lifetime clicks for this link.</p>
             </CardContent>
          </Card>
@@ -65,13 +121,13 @@ export default function LinkSpecificAnalyticsPage() {
             </CardHeader>
             <CardContent>
                 <a 
-                    href={link.targets[0].url} 
+                    href={link.targets[0]?.url} 
                     target="_blank" 
                     rel="noopener noreferrer" 
                     className="text-sm text-primary hover:underline break-all line-clamp-3"
-                    title={link.targets[0].url}
+                    title={link.targets[0]?.url}
                 >
-                    {link.targets[0].url}
+                    {link.targets[0]?.url || 'N/A'}
                 </a>
                 {link.targets.length > 1 && <Badge variant="secondary" className="mt-2">URL Rotation Active</Badge>}
             </CardContent>

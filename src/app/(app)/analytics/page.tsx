@@ -1,8 +1,8 @@
 'use client';
 
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect, useCallback } from 'react';
 import { AnalyticsChart } from '@/components/analytics/analytics-chart';
-import { mockLinks, getMockAnalyticsForLink } from '@/lib/mock-data';
+import { getMockLinks, getMockAnalyticsChartDataForLink, getTotalClicks, getLinksCount } from '@/lib/mock-data';
 import type { LinkItem } from '@/types';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -12,23 +12,40 @@ import Link from 'next/link';
 import { Button } from '@/components/ui/button';
 
 export default function AnalyticsPage() {
-  const [selectedLinkId, setSelectedLinkId] = useState<string | null>(mockLinks.length > 0 ? mockLinks[0].id : null);
-  const [timeRange, setTimeRange] = useState<string>('30days'); // Default to 30 days '7days', '30days', '90days'
+  const [allLinks, setAllLinks] = useState<LinkItem[]>([]);
+  const [selectedLinkId, setSelectedLinkId] = useState<string | null>(null);
+  const [timeRange, setTimeRange] = useState<string>('30days');
 
-  const selectedLink = useMemo(() => mockLinks.find(link => link.id === selectedLinkId), [selectedLinkId]);
+  const fetchLinksData = useCallback(() => {
+    const links = getMockLinks();
+    setAllLinks(links);
+    if (links.length > 0 && !selectedLinkId) {
+      setSelectedLinkId(links[0].id);
+    } else if (links.length === 0) {
+      setSelectedLinkId(null);
+    }
+  }, [selectedLinkId]);
+
+  useEffect(() => {
+    fetchLinksData();
+  }, [fetchLinksData]);
+
+  const selectedLink = useMemo(() => allLinks.find(link => link.id === selectedLinkId), [allLinks, selectedLinkId]);
   
   const chartData = useMemo(() => {
     if (!selectedLink) return [];
     const days = timeRange === '7days' ? 7 : timeRange === '30days' ? 30 : 90;
-    return getMockAnalyticsForLink(selectedLink.id, days);
+    return getMockAnalyticsChartDataForLink(selectedLink.id, days);
   }, [selectedLink, timeRange]);
 
-  const totalClicksAllLinks = useMemo(() => mockLinks.reduce((sum, link) => sum + link.clickCount, 0), []);
+  const totalClicksAllLinks = useMemo(() => getTotalClicks(), [allLinks]); // Recompute if allLinks changes
+  const totalLinksCountSystem = useMemo(() => getLinksCount(), [allLinks]);
+
 
   const topPerformingLink = useMemo(() => {
-    if (mockLinks.length === 0) return null;
-    return [...mockLinks].sort((a,b) => b.clickCount - a.clickCount)[0];
-  }, []);
+    if (allLinks.length === 0) return null;
+    return [...allLinks].sort((a,b) => (b.clickCount || 0) - (a.clickCount || 0))[0];
+  }, [allLinks]);
 
 
   const exampleBreakdownData = [
@@ -48,7 +65,7 @@ export default function AnalyticsPage() {
             <Link2 className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{mockLinks.length}</div>
+            <div className="text-2xl font-bold">{totalLinksCountSystem}</div>
             <p className="text-xs text-muted-foreground">Across all your campaigns</p>
           </CardContent>
         </Card>
@@ -72,7 +89,7 @@ export default function AnalyticsPage() {
                 {topPerformingLink?.title || topPerformingLink?.shortUrl || 'N/A'}
             </div>
             <p className="text-xs text-muted-foreground">
-                {topPerformingLink ? `${topPerformingLink.clickCount.toLocaleString()} clicks` : 'No links available'}
+                {topPerformingLink ? `${(topPerformingLink.clickCount || 0).toLocaleString()} clicks` : 'No links available'}
             </p>
           </CardContent>
         </Card>
@@ -87,18 +104,18 @@ export default function AnalyticsPage() {
             </div>
             <div className="flex gap-2 w-full sm:w-auto">
               <Select value={selectedLinkId || undefined} onValueChange={(value) => setSelectedLinkId(value as string)}>
-                <SelectTrigger className="w-full sm:w-[200px]">
+                <SelectTrigger className="w-full sm:w-[200px]" disabled={allLinks.length === 0}>
                   <SelectValue placeholder="Select a link" />
                 </SelectTrigger>
                 <SelectContent>
-                  {mockLinks.map(link => (
+                  {allLinks.map(link => (
                     <SelectItem key={link.id} value={link.id}>
                       {link.title || link.shortUrl}
                     </SelectItem>
                   ))}
                 </SelectContent>
               </Select>
-              <Select value={timeRange} onValueChange={setTimeRange}>
+              <Select value={timeRange} onValueChange={setTimeRange} disabled={!selectedLink}>
                 <SelectTrigger className="w-full sm:w-[120px]">
                   <SelectValue placeholder="Time Range" />
                 </SelectTrigger>
@@ -120,7 +137,7 @@ export default function AnalyticsPage() {
               description={`Showing clicks for the selected period.`}
             />
           ) : (
-             mockLinks.length > 0 ? 
+             allLinks.length > 0 ? 
             <p className="text-muted-foreground text-center py-10">Please select a link to view its analytics.</p>
             :
             <p className="text-muted-foreground text-center py-10">No links available to analyze. Create some links first!</p>
@@ -171,14 +188,14 @@ export default function AnalyticsPage() {
                     </TableRow>
                 </TableHeader>
                 <TableBody>
-                    {mockLinks.slice(0, Math.min(5, mockLinks.length)).map(link => ( 
+                    {allLinks.slice(0, Math.min(5, allLinks.length)).map(link => ( 
                         <TableRow key={link.id}>
                             <TableCell>
                                 <div className="font-medium">{link.title || link.shortUrl}</div>
                                 {link.title && <div className="text-xs text-muted-foreground">{link.shortUrl}</div>}
                             </TableCell>
                             <TableCell className="hidden md:table-cell truncate max-w-xs" title={link.targets[0]?.url}>{link.targets[0]?.url}</TableCell>
-                            <TableCell className="text-right">{link.clickCount.toLocaleString()}</TableCell>
+                            <TableCell className="text-right">{(link.clickCount || 0).toLocaleString()}</TableCell>
                             <TableCell className="text-right">
                                 <Button variant="outline" size="sm" asChild>
                                     <Link href={`/analytics/${link.slug || link.id}`}>View Details</Link>
@@ -186,7 +203,7 @@ export default function AnalyticsPage() {
                             </TableCell>
                         </TableRow>
                     ))}
-                    {mockLinks.length === 0 && (
+                    {allLinks.length === 0 && (
                         <TableRow>
                             <TableCell colSpan={4} className="text-center text-muted-foreground py-10">
                                 No links created yet.
@@ -195,7 +212,7 @@ export default function AnalyticsPage() {
                     )}
                 </TableBody>
             </Table>
-             {mockLinks.length > 5 && (
+             {allLinks.length > 5 && (
                 <div className="mt-4 text-center">
                     <Button variant="link" asChild>
                         <Link href="/links">View All Links</Link>
