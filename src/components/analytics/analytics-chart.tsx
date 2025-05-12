@@ -1,8 +1,9 @@
+
 'use client';
 
 import React from 'react';
-import { Bar, BarChart, CartesianGrid, ResponsiveContainer, XAxis, YAxis, Line, LineChart } from 'recharts';
-import { ChartConfig, ChartContainer } from '@/components/ui/chart'; // Removed ChartLegend, ChartLegendContent, ChartTooltip, ChartTooltipContent
+import { Bar, BarChart, CartesianGrid, ResponsiveContainer, XAxis, YAxis, Line, LineChart, Legend, Tooltip } from 'recharts';
+import { ChartConfig, ChartContainer, ChartTooltipContent, ChartLegendContent } from '@/components/ui/chart';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 
 interface AnalyticsChartProps {
@@ -15,7 +16,7 @@ interface AnalyticsChartProps {
 const chartConfig = {
   clicks: {
     label: "Clicks",
-    color: "hsl(var(--primary))",
+    color: "hsl(var(--chart-1))", // Use a chart-specific color
   },
 } satisfies ChartConfig;
 
@@ -58,8 +59,11 @@ const AnalyticsChartInternal = ({
                 tickFormatter={(value) => new Date(value).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
               />
               <YAxis allowDecimals={false}/>
-              {/* <ChartTooltip content={<ChartTooltipContent />} /> */} {/* Temporarily removed */}
-              {/* <Legend content={<ChartLegend content={<ChartLegendContent />} />} /> */} {/* Temporarily removed */}
+              <Tooltip 
+                cursor={{ fill: 'hsl(var(--muted))', radius: 4 }}
+                content={<ChartTooltipContent indicator="dot" />} 
+              />
+              <Legend content={<ChartLegendContent />} />
               <Bar dataKey="clicks" fill="var(--color-clicks)" radius={4} />
             </BarChart>
           ) : (
@@ -73,9 +77,19 @@ const AnalyticsChartInternal = ({
                 tickFormatter={(value) => new Date(value).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
               />
               <YAxis allowDecimals={false} />
-              {/* <ChartTooltip content={<ChartTooltipContent />} /> */} {/* Temporarily removed */}
-              {/* <Legend content={<ChartLegend content={<ChartLegendContent />} />} /> */} {/* Temporarily removed */}
-              <Line type="monotone" dataKey="clicks" stroke="var(--color-clicks)" strokeWidth={2} dot={{ r: 4, fill: "var(--color-clicks)" }} activeDot={{ r: 6 }} />
+              <Tooltip 
+                cursor={{ stroke: 'hsl(var(--border))', strokeWidth: 1, strokeDasharray: '3 3' }}
+                content={<ChartTooltipContent indicator="line" />} 
+              />
+              <Legend content={<ChartLegendContent />} />
+              <Line 
+                type="monotone" 
+                dataKey="clicks" 
+                stroke="var(--color-clicks)" 
+                strokeWidth={2} 
+                dot={{ r: 4, fill: "var(--color-clicks)", stroke: "var(--background)" }} 
+                activeDot={{ r: 6, stroke: "var(--background)", strokeWidth: 1 }} 
+              />
             </LineChart>
           )}
         </ChartContainer>
@@ -85,3 +99,4 @@ const AnalyticsChartInternal = ({
 }
 
 export const AnalyticsChart = React.memo(AnalyticsChartInternal);
+
