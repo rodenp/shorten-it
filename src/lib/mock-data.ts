@@ -1,3 +1,4 @@
+
 import type { LinkItem, AnalyticEvent, CustomDomain, TeamMember } from '@/types';
 
 export const mockLinks: LinkItem[] = [
@@ -61,38 +62,31 @@ export const mockTeamMembers: TeamMember[] = [
 ];
 
 export const getMockAnalyticsForLink = (linkId: string, days: number = 7): { date: string; clicks: number }[] => {
-  const data = [];
-  // Cap the maximum number of data points to avoid performance issues with large 'days' values.
-  // For mock data, 30-50 points should be sufficient for visualization.
-  const maxDataPoints = days > 60 ? 30 : (days > 30 ? 20 : days); 
-  const step = Math.max(1, Math.floor(days / maxDataPoints));
+  const data: { date: string; clicks: number }[] = [];
+  
+  // Ensure days is a positive number
+  if (days <= 0) {
+    return [];
+  }
 
-  for (let i = 0; i < days; i += step) {
-    const date = new Date();
-    date.setDate(date.getDate() - i);
+  // Cap the number of data points to a reasonable maximum (e.g., 30)
+  // and ensure at least 1 point if days > 0
+  const numPoints = Math.max(1, Math.min(days, 30));
+
+  for (let i = 0; i < numPoints; i++) {
+    const currentDate = new Date();
+    // Calculate the date offset to spread points across the `days` period
+    // This ensures that even if numPoints is small, the dates span the requested range.
+    const dayOffset = Math.floor((days / numPoints) * i);
+    currentDate.setDate(currentDate.getDate() - dayOffset);
+    
     data.push({
-      date: date.toISOString().split('T')[0],
-      // Simulate varied click counts based on linkId for visual distinction
-      clicks: Math.floor(Math.random() * (linkId === '1' ? 100 : linkId === '2' ? 70 : 50) + (days - i) / (days/10) + 5),
+      date: currentDate.toISOString().split('T')[0],
+      // Simplified click calculation
+      clicks: Math.floor(Math.random() * 80) + Math.floor(Math.random() * (parseInt(linkId) * 10)) + 5,
     });
-    if (data.length >= maxDataPoints) {
-      break; 
-    }
   }
   
-  // If no data was generated (e.g., days is very small, step is too large), ensure at least a few points.
-  if (data.length === 0 && days > 0) {
-    const fallbackPoints = Math.min(days, 5); // Generate up to 5 fallback points
-    for (let i = 0; i < fallbackPoints; i++) {
-        const date = new Date();
-        date.setDate(date.getDate() - (i * Math.floor(days/fallbackPoints))); // Distribute points over the period
-        data.push({
-            date: date.toISOString().split('T')[0],
-            clicks: Math.floor(Math.random() * (linkId === '1' ? 100 : 50) + 10),
-        });
-    }
-  }
-
-
-  return data.reverse();
+  // Recharts expects data to be in chronological order for line charts
+  return data.reverse(); 
 };
