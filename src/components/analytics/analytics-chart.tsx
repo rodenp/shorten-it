@@ -1,8 +1,8 @@
 'use client';
 
 import React from 'react';
-import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis, Line, LineChart, Legend } from 'recharts';
-import { ChartConfig, ChartContainer, ChartLegend, ChartLegendContent, ChartTooltip, ChartTooltipContent } from '@/components/ui/chart';
+import { Bar, BarChart, CartesianGrid, ResponsiveContainer, XAxis, YAxis, Line, LineChart } from 'recharts';
+import { ChartConfig, ChartContainer } from '@/components/ui/chart'; // Removed ChartLegend, ChartLegendContent, ChartTooltip, ChartTooltipContent
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 
 interface AnalyticsChartProps {
@@ -58,8 +58,8 @@ const AnalyticsChartInternal = ({
                 tickFormatter={(value) => new Date(value).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
               />
               <YAxis allowDecimals={false}/>
-              <ChartTooltip content={<ChartTooltipContent />} />
-              <Legend content={<ChartLegend content={<ChartLegendContent />} />} />
+              {/* <ChartTooltip content={<ChartTooltipContent />} /> */} {/* Temporarily removed */}
+              {/* <Legend content={<ChartLegend content={<ChartLegendContent />} />} /> */} {/* Temporarily removed */}
               <Bar dataKey="clicks" fill="var(--color-clicks)" radius={4} />
             </BarChart>
           ) : (
@@ -73,8 +73,8 @@ const AnalyticsChartInternal = ({
                 tickFormatter={(value) => new Date(value).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
               />
               <YAxis allowDecimals={false} />
-              <ChartTooltip content={<ChartTooltipContent />} />
-              <Legend content={<ChartLegend content={<ChartLegendContent />} />} />
+              {/* <ChartTooltip content={<ChartTooltipContent />} /> */} {/* Temporarily removed */}
+              {/* <Legend content={<ChartLegend content={<ChartLegendContent />} />} /> */} {/* Temporarily removed */}
               <Line type="monotone" dataKey="clicks" stroke="var(--color-clicks)" strokeWidth={2} dot={{ r: 4, fill: "var(--color-clicks)" }} activeDot={{ r: 6 }} />
             </LineChart>
           )}
