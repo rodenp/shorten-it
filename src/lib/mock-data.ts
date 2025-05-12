@@ -1,10 +1,20 @@
 
 import type { LinkItem, AnalyticEvent, CustomDomain, TeamMember, LinkTarget, LinkGroup } from '@/types';
 
-const getShortenerDomain = (): string => {
-  // Prefer environment variable, fallback to a default if not set
-  return process.env.NEXT_PUBLIC_SHORTENER_DOMAIN || 'linkyle.com';
+let shortenerDomain = 'linkyle.com'; // Default value
+
+export const getShortenerDomain = (): string => {
+  return shortenerDomain;
 };
+
+export const setShortenerDomain = (domain: string) => {
+  shortenerDomain = domain || 'linkyle.com';
+};
+
+// Initialize shortenerDomain from .env if available (client-side effect)
+if (typeof process !== 'undefined' && process.env?.NEXT_PUBLIC_SHORTENER_DOMAIN) {
+  setShortenerDomain(process.env.NEXT_PUBLIC_SHORTENER_DOMAIN);
+}
 
 
 let linksDB: LinkItem[] = [
@@ -419,5 +429,5 @@ export const mockLinks = linksDB;
 export const mockAnalyticsEvents = analyticsEventsDB;
 export const mockCustomDomains = customDomainsDB;
 export const mockTeamMembers = teamMembersDB;
-export const mockLinkGroups = linkGroupsDB; // Export for direct use if needed
+export const mockLinkGroups = linkGroupsDB;
 export const getMockAnalyticsForLink = getMockAnalyticsChartDataForLink;

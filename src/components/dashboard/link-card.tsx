@@ -1,3 +1,4 @@
+
 'use client';
 
 import type { LinkItem, LinkGroup } from '@/types';
@@ -70,7 +71,7 @@ export function LinkCard({ link, onDelete }: LinkCardProps) {
     }
 
     if (link.isCloaked) icons.push({ icon: ShieldCheck, label: "Link Cloaking" });
-    if (link.deepLinkConfig) icons.push({ icon: MoveDiagonal, label: "Deep Linking" });
+    if (link.deepLinkConfig && (link.deepLinkConfig.ios || link.deepLinkConfig.android)) icons.push({ icon: MoveDiagonal, label: "Deep Linking" });
     if (link.retargetingPixels && link.retargetingPixels.length > 0) icons.push({ icon: Target, label: "Retargeting" });
     return icons;
   }
@@ -136,17 +137,13 @@ export function LinkCard({ link, onDelete }: LinkCardProps) {
                   <DropdownMenuSeparator />
                    <AlertDialog>
                     <AlertDialogTrigger asChild>
-                      <button
-                        type="button"
-                        className={cn(
-                          "relative flex w-full cursor-default select-none items-center gap-2 rounded-sm px-2 py-1.5 text-sm outline-none transition-colors data-[disabled]:pointer-events-none data-[disabled]:opacity-50",
-                          "text-destructive focus:bg-destructive focus:text-destructive-foreground hover:bg-destructive hover:text-destructive-foreground justify-start",
-                          "[&_svg]:size-4 [&_svg]:shrink-0 [&_svg]:mr-2"
-                        )}
-                      >
+                      <DropdownMenuItem
+                        onSelect={(e) => e.preventDefault()} // Prevent closing dropdown
+                        className="text-destructive focus:bg-destructive focus:text-destructive-foreground justify-start"
+                       >
                         <Trash2 />
                         <span>Delete Link</span>
-                      </button>
+                      </DropdownMenuItem>
                     </AlertDialogTrigger>
                     <AlertDialogContent>
                       <AlertDialogHeader>

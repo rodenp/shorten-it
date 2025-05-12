@@ -1,3 +1,4 @@
+
 'use client';
 
 import { zodResolver } from '@hookform/resolvers/zod';
@@ -21,15 +22,10 @@ import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/
 import { Switch } from '@/components/ui/switch';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Shuffle, ShieldCheck, MoveDiagonal, FlaskConical, Target, Tag, Settings2, Link as LinkIcon, Globe, Percent, FolderKanban } from 'lucide-react';
-import { addMockLink, getMockCustomDomains, getMockLinkGroups } from '@/lib/mock-data';
+import { addMockLink, getMockCustomDomains, getMockLinkGroups, getShortenerDomain } from '@/lib/mock-data';
 import type { CustomDomain, LinkGroup } from '@/types';
 import { useEffect, useState } from 'react';
 import { Slider } from '@/components/ui/slider';
-
-const getShortenerDomain = (): string => {
-  // Prefer environment variable, fallback to a default if not set
-  return process.env.NEXT_PUBLIC_SHORTENER_DOMAIN || 'linkyle.com';
-};
 
 
 const urlInputFormSchema = z.object({
@@ -131,13 +127,13 @@ export function UrlInputForm({ onLinkAdded }: UrlInputFormProps) {
     defaultValues,
     mode: 'onChange',
   });
-  const [shortenerDomain, setShortenerDomain] = useState('linkyle.com');
+  const [shortenerDomainState, setShortenerDomainState] = useState('linkyle.com');
 
 
   useEffect(() => {
     const domains = getMockCustomDomains();
     setVerifiedDomains(domains.filter(d => d.verified));
-    setShortenerDomain(getShortenerDomain());
+    setShortenerDomainState(getShortenerDomain());
     setLinkGroups(getMockLinkGroups());
   }, []);
 
@@ -172,8 +168,8 @@ export function UrlInputForm({ onLinkAdded }: UrlInputFormProps) {
       title: data.title,
       tags: data.tags,
       isCloaked: data.enableCloaking,
-      deepLinkIOS: data.deepLinkIOS,
-      deepLinkAndroid: data.deepLinkAndroid,
+      deepLinkIOS: data.enableDeepLinking ? data.deepLinkIOS : undefined,
+      deepLinkAndroid: data.enableDeepLinking ? data.deepLinkAndroid : undefined,
       retargetingPixelId: data.enableRetargeting ? data.retargetingPixelId : undefined,
       customDomain: selectedCustomDomainName,
       groupId: selectedGroupId,
@@ -377,7 +373,7 @@ export function UrlInputForm({ onLinkAdded }: UrlInputFormProps) {
                             </SelectTrigger>
                           </FormControl>
                           <SelectContent>
-                            <SelectItem value="default">Default Domain ({shortenerDomain})</SelectItem>
+                            <SelectItem value="default">Default Domain ({shortenerDomainState})</SelectItem>
                             {verifiedDomains.map(domain => (
                               <SelectItem key={domain.id} value={domain.domainName}>
                                 {domain.domainName}
@@ -541,7 +537,7 @@ export function UrlInputForm({ onLinkAdded }: UrlInputFormProps) {
                               render={({ field: iosField }) => (
                                 <FormItem>
                                   <FormLabel>iOS URI Scheme (Optional)</FormLabel>
-                                  <FormControl><Input placeholder="yourapp://path/to/content" {...iosField} /></FormControl>
+                                  <FormControl><Input placeholder="yourapp://product/123" {...iosField} /></FormControl>
                                 </FormItem>
                               )}
                             />
@@ -551,7 +547,7 @@ export function UrlInputForm({ onLinkAdded }: UrlInputFormProps) {
                               render={({ field: androidField }) => (
                                 <FormItem>
                                   <FormLabel>Android URI Scheme (Optional)</FormLabel>
-                                  <FormControl><Input placeholder="yourapp://path/to/content" {...androidField} /></FormControl>
+                                  <FormControl><Input placeholder="yourapp://product/123" {...androidField} /></FormControl>
                                 </FormItem>
                               )}
                             />

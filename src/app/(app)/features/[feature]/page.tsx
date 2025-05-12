@@ -7,7 +7,8 @@ import { Button } from '@/components/ui/button';
 import Link from 'next/link';
 import { ArrowLeft, FlaskConical, Info, Shuffle, Settings2, ShieldCheck, MoveDiagonal, GitFork, FileText } from 'lucide-react';
 import Image from 'next/image';
-import { LinkGroupsManagement } from '@/components/features/link-groups-management'; // Added
+import { LinkGroupsManagement } from '@/components/features/link-groups-management';
+import { DeepLinkingFeature } from '@/components/features/deep-linking-feature'; // Added
 
 const featureDetails: Record<string, {
   title: string;
@@ -15,7 +16,7 @@ const featureDetails: Record<string, {
   description: string;
   details: string;
   imageHint: string;
-  isImplemented?: boolean; // Added to track if a custom component is used
+  isImplemented?: boolean; 
 }> = {
   rotation: {
     title: "URL Rotation",
@@ -44,6 +45,7 @@ const featureDetails: Record<string, {
     description: "Send users directly to specific content within your mobile app.",
     details: "Deep linking allows your short links to intelligently redirect users to specific content or pages within your iOS or Android mobile application if they have it installed. If the app isn't installed, they can be redirected to the app store or a fallback web URL. This provides a seamless user experience for mobile users.",
     imageHint: "mobile app",
+    isImplemented: true, // Mark as implemented
   },
   groups: {
     title: "Link Groups",
@@ -51,7 +53,7 @@ const featureDetails: Record<string, {
     description: "Organize your links into groups or campaigns for better management.",
     details: "Link groups (or campaigns) allow you to categorize and manage your short links more effectively. By grouping related links, you can easily track collective performance, apply bulk actions (feature dependent), and keep your dashboard organized. This is especially useful for managing multiple marketing campaigns or different types of links.",
     imageHint: "folder organization",
-    isImplemented: true, // Mark as implemented
+    isImplemented: true,
   },
   export: {
     title: "Export Data",
@@ -76,7 +78,7 @@ export default function FeaturePage() {
         .map(word => word.charAt(0).toUpperCase() + word.slice(1))
         .join(' ');
   
-  const FeatureIcon = currentFeature ? currentFeature.icon : Settings2; // Changed fallback icon
+  const FeatureIcon = currentFeature ? currentFeature.icon : Settings2;
 
 
   const renderFeatureContent = () => {
@@ -94,6 +96,10 @@ export default function FeaturePage() {
 
     if (featureName === 'groups' && currentFeature.isImplemented) {
       return <LinkGroupsManagement />;
+    }
+
+    if (featureName === 'deeplinking' && currentFeature.isImplemented) {
+      return <DeepLinkingFeature />;
     }
 
     // Default rendering for other features or unimplemented ones
