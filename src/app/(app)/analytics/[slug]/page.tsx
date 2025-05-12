@@ -1,3 +1,4 @@
+
 'use client';
 
 import { AnalyticsChart } from '@/components/analytics/analytics-chart';
@@ -20,52 +21,29 @@ export default function LinkSpecificAnalyticsPage() {
   const [link, setLink] = useState<LinkItem | undefined>(undefined);
   const [chartData, setChartData] = useState<{ date: string; clicks: number }[]>([]);
   const [linkSpecificEvents, setLinkSpecificEvents] = useState<any[]>([]); // Using any for mock simplicity
+  const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
+    setIsLoading(true);
     const currentLink = getMockLinkBySlugOrId(slug);
-    setLink(currentLink);
-
+    
     if (currentLink) {
+      setLink(currentLink);
       setChartData(getMockAnalyticsChartDataForLink(currentLink.id, 30));
       const events = getAnalyticsForLink(currentLink.id).slice(0, 5);
       setLinkSpecificEvents(events);
     } else {
-      // Trigger notFound if link isn't found after client-side check
-      // This won't work directly in useEffect for initial render if page is static.
-      // For fully client-rendered data fetching, this is okay.
-      // If SSR/SSG, initial data fetching would be different.
+      // If link is not found after attempting to fetch, set it to null to trigger notFound()
+      setLink(null); 
     }
+    setIsLoading(false);
   }, [slug]);
 
 
-  if (!link && typeof window !== 'undefined') { // Check if on client and link still not found
-     // This is a client-side notFound. For SSR/SSG, this would be handled differently.
-     // To ensure it works with Next.js App Router behavior for dynamic segments,
-     // it's better to let Next.js handle notFound based on data fetching.
-     // If getMockLinkBySlugOrId is synchronous and we are on client, we can call notFound().
-     // However, this might be too late if the page structure is already rendered.
-     // For this mock setup, we'll show a loading/not found message.
-  }
-  
-  // Initial render or if link is not found yet.
-  if (!link) {
-    // Check if the slug *could* be valid based on any existing link data,
-    // if not, then it's a true notFound.
-    // This is a bit tricky with pure client-side mock data.
-    // For now, if not found during useEffect, it will eventually show notFound.
-    // A better approach for dynamic routes would be to have a loading state
-    // or use Next.js's notFound() in a server component if data fetching fails there.
-    // Since this is a client component, we render a placeholder or trigger notFound if truly appropriate.
-    // Let's assume if link is still undefined after useEffect, it's a notFound case for this mock.
-    // To avoid calling notFound() conditionally in a way that might break React rules,
-    // we simply return a "not found" UI or rely on initial data load.
-    // If the page is part of a dynamic route segment, Next.js should handle it.
-    // If we call notFound() here directly, it might be too late or cause issues.
-    // So we render a message, or if certain no link can exist, then notFound().
-    // For now, let's return a message as it's client-side data.
-     return (
+  if (isLoading) {
+    return (
       <div className="container mx-auto py-10 text-center">
-        <p className="text-lg text-muted-foreground">Loading link data or link not found...</p>
+        <p className="text-lg text-muted-foreground">Loading link data...</p>
          <Button variant="outline" size="sm" asChild className="mt-6">
           <Link href="/analytics">
             <ArrowLeft className="mr-2 h-4 w-4" />
@@ -74,9 +52,28 @@ export default function LinkSpecificAnalyticsPage() {
         </Button>
       </div>
     );
-    // If after initial load, link is still undefined, it's effectively a 404.
-    // Next.js's `notFound()` should ideally be called from server components or `generateStaticParams`.
-    // In a client component, direct `notFound()` call after initial render can be problematic.
+  }
+
+  if (link === null) { // Explicitly check for null after loading attempt
+    notFound();
+  }
+  
+  // This check is to satisfy TypeScript, as `link` could be undefined if notFound() wasn't called yet.
+  // However, the logic above ensures `link` is either an object or notFound() is called.
+  if (!link) {
+    // This case should ideally not be reached if isLoading and link === null checks are correct.
+    // It acts as a fallback.
+    return (
+         <div className="container mx-auto py-10 text-center">
+            <p className="text-lg text-muted-foreground">Link not found.</p>
+             <Button variant="outline" size="sm" asChild className="mt-6">
+              <Link href="/analytics">
+                <ArrowLeft className="mr-2 h-4 w-4" />
+                Back to All Analytics
+              </Link>
+            </Button>
+        </div>
+    );
   }
 
 
@@ -137,9 +134,9 @@ export default function LinkSpecificAnalyticsPage() {
                 <CardTitle className="text-lg">Key Features</CardTitle>
             </CardHeader>
             <CardContent className="space-y-1 text-sm">
-                <p>Custom Domain: {link.customDomain ? <Badge>{link.customDomain}</Badge> : <Badge variant="outline">Default</Badge>}</p>
-                <p>Cloaked: {link.isCloaked ? <Badge variant="default">Yes</Badge> : <Badge variant="outline">No</Badge>}</p>
-                <p>A/B Test: {link.abTestConfig ? <Badge variant="default">Active</Badge> : <Badge variant="outline">Inactive</Badge>}</p>
+                <div className="flex items-center">Custom Domain: &nbsp;{link.customDomain ? <Badge>{link.customDomain}</Badge> : <Badge variant="outline">Default</Badge>}</div>
+                <div className="flex items-center">Cloaked: &nbsp;{link.isCloaked ? <Badge variant="default">Yes</Badge> : <Badge variant="outline">No</Badge>}</div>
+                <div className="flex items-center">A/B Test: &nbsp;{link.abTestConfig ? <Badge variant="default">Active</Badge> : <Badge variant="outline">Inactive</Badge>}</div>
             </CardContent>
          </Card>
       </div>
