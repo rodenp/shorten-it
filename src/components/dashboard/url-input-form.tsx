@@ -1,3 +1,4 @@
+
 'use client';
 
 import { zodResolver } from '@hookform/resolvers/zod';
@@ -19,8 +20,16 @@ import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle }
 import { useToast } from '@/hooks/use-toast';
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/components/ui/accordion';
 import { Switch } from '@/components/ui/switch';
-import { Shuffle, ShieldCheck, MoveDiagonal, FlaskConical, Target, Tag, Settings2, Link as LinkIcon } from 'lucide-react';
-import { addMockLink } from '@/lib/mock-data';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Shuffle, ShieldCheck, MoveDiagonal, FlaskConical, Target, Tag, Settings2, Link as LinkIcon, Globe } from 'lucide-react';
+import { addMockLink, getMockCustomDomains } from '@/lib/mock-data';
+import type { CustomDomain } from '@/types';
+import { useEffect, useState } from 'react';
+
+const getShortenerDomain = (): string => {
+  return process.env.NEXT_PUBLIC_LINK_SHORTENER_DOMAIN || 'lnk.wiz';
+};
+
 
 const urlInputFormSchema = z.object({
   urls: z.string().min(1, { message: 'Please enter at least one URL.' })
@@ -28,18 +37,21 @@ const urlInputFormSchema = z.object({
       const lines = value.split('\n').map(line => line.trim()).filter(line => line.length > 0);
       return lines.every(line => {
         try {
-          const url = new URL(line);
-          return url.protocol === "http:" || url.protocol === "https:";
+          // Check if it's a valid URL structure, but allow URLs without http/https for now.
+          // The backend or a more specific validation step can enforce protocol.
+          new URL(line.startsWith('http') ? line : `http://${line}`);
+          return true;
         } catch (_) {
           return false;
         }
       });
-    }, { message: 'One or more URLs are invalid. Please enter valid URLs (starting with http:// or https://), one per line.' }),
+    }, { message: 'One or more URLs are invalid. Please enter valid URLs, one per line.' }),
   customAlias: z.string().optional().refine(value => !value || /^[a-zA-Z0-9_-]+$/.test(value), {
     message: "Alias can only contain letters, numbers, underscores, and hyphens.",
   }),
   title: z.string().optional(),
-  tags: z.string().optional(), // Will be comma-separated string
+  tags: z.string().optional(),
+  customDomain: z.string().optional(), // For selected custom domain
   enableRotation: z.boolean().default(false).optional(),
   enableCloaking: z.boolean().default(false).optional(),
   enableDeepLinking: z.boolean().default(false).optional(),
@@ -47,34 +59,40 @@ const urlInputFormSchema = z.object({
   deepLinkAndroid: z.string().optional(),
   enableABTesting: z.boolean().default(false).optional(),
   abTestVariantBUrl: z.string().optional().refine(value => {
-    if (!value) return true; // Optional field
+    if (!value) return true;
     try {
-      const url = new URL(value);
-      return url.protocol === "http:" || url.protocol === "https:";
+      new URL(value.startsWith('http') ? value : `http://${value}`);
+      return true;
     } catch (_) {
       return false;
     }
-  }, { message: 'Variant B URL is invalid. Please enter a valid URL (starting with http:// or https://).' }),
+  }, { message: 'Variant B URL is invalid. Please enter a valid URL.' }),
   enableRetargeting: z.boolean().default(false).optional(),
   retargetingPixelId: z.string().optional(),
 }).refine(data => {
-  // If A/B testing is enabled, Variant B URL must be provided
   if (data.enableABTesting && !data.abTestVariantBUrl) {
     return false;
   }
   return true;
 }, {
   message: "Variant B URL is required when A/B Testing is enabled.",
-  path: ["abTestVariantBUrl"], // Field to highlight for the error
+  path: ["abTestVariantBUrl"],
 }).refine(data => {
-    // If deep linking is enabled, at least one URI scheme should be provided
     if (data.enableDeepLinking && !data.deepLinkIOS && !data.deepLinkAndroid) {
         return false;
     }
     return true;
 }, {
     message: "At least one URI scheme (iOS or Android) is required for Deep Linking.",
-    path: ["deepLinkIOS"], // Arbitrarily point to one, or make a custom error display
+    path: ["deepLinkIOS"], // Or a more general path if applicable
+}).refine(data => {
+    // If multiple URLs are provided and NOT enabling rotation,
+    // and a custom alias is set, this is potentially ambiguous.
+    // The description says alias applies to the first.
+    // This refine is more for complex multi-url scenarios,
+    // if specific restrictions beyond "alias for first" were needed.
+    // For now, the described behavior is acceptable.
+    return true;
 });
 
 
@@ -94,6 +112,7 @@ const defaultValues: Partial<UrlInputFormValues> = {
   customAlias: '',
   title: '',
   tags: '',
+  customDomain: 'default',
 };
 
 interface UrlInputFormProps {
@@ -102,79 +121,124 @@ interface UrlInputFormProps {
 
 export function UrlInputForm({ onLinkAdded }: UrlInputFormProps) {
   const { toast } = useToast();
+  const [verifiedDomains, setVerifiedDomains] = useState<CustomDomain[]>([]);
   const form = useForm<UrlInputFormValues>({
     resolver: zodResolver(urlInputFormSchema),
     defaultValues,
-    mode: 'onChange', // Or 'onSubmit'
+    mode: 'onChange',
   });
+  const [shortenerDomain, setShortenerDomain] = useState('lnk.wiz');
+
+
+  useEffect(() => {
+    const domains = getMockCustomDomains();
+    setVerifiedDomains(domains.filter(d => d.verified));
+    setShortenerDomain(getShortenerDomain());
+  }, []);
 
   async function onSubmit(data: UrlInputFormValues) {
-    await new Promise(resolve => setTimeout(resolve, 300)); // Simulate API call
+    await new Promise(resolve => setTimeout(resolve, 300));
 
-    const urlList = data.urls.split('\n').map(url => url.trim()).filter(Boolean);
+    const urlList = data.urls.split('\n').map(url => {
+      let trimmedUrl = url.trim();
+      if (!trimmedUrl.startsWith('http://') && !trimmedUrl.startsWith('https://')) {
+        trimmedUrl = `https://${trimmedUrl}`;
+      }
+      return trimmedUrl;
+    }).filter(Boolean);
+
+
+    if (urlList.length === 0) {
+      toast({
+        title: 'No URLs Provided',
+        description: 'Please enter at least one URL to shorten.',
+        variant: 'destructive',
+      });
+      return;
+    }
+    
     let createdCount = 0;
+    let errorMessages: string[] = [];
+
+    const selectedCustomDomainName = data.customDomain === 'default' ? undefined : data.customDomain;
 
     const commonPropsForAddMockLink = {
       title: data.title,
       tags: data.tags,
       isCloaked: data.enableCloaking,
-      enableDeepLinking: data.enableDeepLinking,
-      deepLinkIOS: data.deepLinkIOS,
-      deepLinkAndroid: data.deepLinkAndroid,
-      enableRetargeting: data.enableRetargeting,
-      retargetingPixelId: data.retargetingPixelId,
+      deepLinkConfig: data.enableDeepLinking && (data.deepLinkIOS || data.deepLinkAndroid)
+        ? { ios: data.deepLinkIOS || '', android: data.deepLinkAndroid || '' }
+        : undefined,
+      retargetingPixels: data.enableRetargeting && data.retargetingPixelId
+        ? [{ platform: 'custom', pixelId: data.retargetingPixelId }] // Simplified structure
+        : undefined,
+      customDomain: selectedCustomDomainName,
     };
 
-    if (data.enableRotation && urlList.length > 1) {
-      // Single link with URL rotation
-      addMockLink({
-        destinationUrls: urlList,
-        isRotation: true,
-        isABTest: false, // Rotation and A/B Testing are mutually exclusive per form logic
-        customAlias: data.customAlias, // Alias applies to this single rotated link
-        ...commonPropsForAddMockLink,
-      });
-      createdCount = 1;
-    } else {
-      // Create separate links for each URL, or one link if only one URL
-      urlList.forEach((url, index) => {
-        const isFirstUrlInBatch = index === 0;
-        // A/B test only for the first URL in the list if multiple individual links are created,
-        // and A/B testing is enabled, and Variant B URL is provided.
-        const enableABTestForThisLink = isFirstUrlInBatch && data.enableABTesting && !!data.abTestVariantBUrl;
-        
-        let currentDestinationUrls = [url];
-        if (enableABTestForThisLink && data.abTestVariantBUrl) {
-            currentDestinationUrls.push(data.abTestVariantBUrl);
-        }
-
+    try {
+      if (data.enableRotation && urlList.length > 1) {
+        // Single link with multiple targets for rotation
         addMockLink({
-          destinationUrls: currentDestinationUrls,
-          isRotation: false, // Rotation is handled by the block above
-          isABTest: enableABTestForThisLink,
-          customAlias: isFirstUrlInBatch ? data.customAlias : undefined, // Alias only for the first link
+          destinationUrls: urlList,
+          isRotation: true,
+          isABTest: false,
+          customAlias: data.customAlias,
           ...commonPropsForAddMockLink,
         });
-        createdCount++;
-      });
+        createdCount = 1;
+      } else {
+        // Multiple links OR a single link (potentially with A/B test)
+        urlList.forEach((url, index) => {
+          const isFirstUrlInBatch = index === 0;
+          const applyCustomAlias = isFirstUrlInBatch ? data.customAlias : undefined;
+          
+          let currentDestinationUrls = [url];
+          let isABTestForThisLink = false;
+
+          if (isFirstUrlInBatch && data.enableABTesting && data.abTestVariantBUrl && !data.enableRotation) {
+            let variantB = data.abTestVariantBUrl.trim();
+            if (!variantB.startsWith('http://') && !variantB.startsWith('https://')) {
+                variantB = `https://${variantB}`;
+            }
+            currentDestinationUrls.push(variantB);
+            isABTestForThisLink = true;
+          }
+
+          addMockLink({
+            destinationUrls: currentDestinationUrls,
+            isRotation: false, // Rotation handled above
+            isABTest: isABTestForThisLink,
+            customAlias: applyCustomAlias,
+            ...commonPropsForAddMockLink,
+          });
+          createdCount++;
+        });
+      }
+    } catch (e: any) {
+        errorMessages.push(e.message || "An unexpected error occurred while creating links.");
     }
-    
+
     if (createdCount > 0) {
       toast({
         title: `${createdCount} Link${createdCount > 1 ? 's' : ''} Created!`,
         description: `Successfully generated ${createdCount} short link${createdCount > 1 ? 's' : ''}.`,
         variant: 'default',
       });
-      form.reset(); // Reset form to default values
-      onLinkAdded?.(); // Callback to refresh dashboard or link list
-    } else if (urlList.length > 0) { // If URLs were provided but nothing created (should not happen with current logic)
+      form.reset();
+      onLinkAdded?.();
+    } else if (errorMessages.length > 0) {
        toast({
         title: 'Failed to Create Links',
+        description: errorMessages.join(' '),
+        variant: 'destructive',
+      });
+    } else if (urlList.length > 0){ // Only show this if URLs were provided but nothing created
+       toast({
+        title: 'No Links Created',
         description: 'Could not create any links. Please check your input and try again.',
         variant: 'destructive',
       });
     }
-    // If urlList is empty, no toast is shown, which is fine as validation should catch it.
   }
 
   return (
@@ -194,16 +258,16 @@ export function UrlInputForm({ onLinkAdded }: UrlInputFormProps) {
               name="urls"
               render={({ field }) => (
                 <FormItem>
-                  <FormLabel>URLs (one per line, e.g., https://example.com)</FormLabel>
+                  <FormLabel>URLs (one per line, e.g., example.com or https://example.com)</FormLabel>
                   <FormControl>
                     <Textarea
-                      placeholder="https://example.com/my-long-url-1&#10;https://example.com/my-long-url-2"
+                      placeholder="example.com/my-long-url-1&#10;https://another.com/my-long-url-2"
                       className="min-h-[100px] resize-y"
                       {...field}
                     />
                   </FormControl>
                   <FormDescription>
-                    Enter one or more URLs. If multiple URLs are provided and URL Rotation is not enabled, a separate short link will be created for each URL using other settings.
+                    Enter one or more URLs. If multiple URLs are provided and URL Rotation is not enabled, a separate short link will be created for each. URLs without http(s) will default to https.
                   </FormDescription>
                   <FormMessage />
                 </FormItem>
@@ -225,7 +289,7 @@ export function UrlInputForm({ onLinkAdded }: UrlInputFormProps) {
                         <FormControl>
                           <Input placeholder="my-cool-link" {...field} />
                         </FormControl>
-                         <FormDescription>If creating multiple links (not rotating), alias applies to the first URL only. Ignored if blank.</FormDescription>
+                         <FormDescription>If creating multiple links (not rotating), alias applies to the first URL only. Ignored if blank. Must be unique for the chosen domain.</FormDescription>
                         <FormMessage />
                       </FormItem>
                     )}
@@ -258,6 +322,32 @@ export function UrlInputForm({ onLinkAdded }: UrlInputFormProps) {
                       </FormItem>
                     )}
                   />
+                  <FormField
+                    control={form.control}
+                    name="customDomain"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel className="flex items-center"><Globe className="mr-2 h-4 w-4" />Custom Domain (Optional)</FormLabel>
+                        <Select onValueChange={field.onChange} defaultValue={field.value}>
+                          <FormControl>
+                            <SelectTrigger>
+                              <SelectValue placeholder="Select a domain" />
+                            </SelectTrigger>
+                          </FormControl>
+                          <SelectContent>
+                            <SelectItem value="default">Default Domain ({shortenerDomain})</SelectItem>
+                            {verifiedDomains.map(domain => (
+                              <SelectItem key={domain.id} value={domain.domainName}>
+                                {domain.domainName}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                        <FormDescription>Choose a verified custom domain for your short links. Defaults to the system domain.</FormDescription>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
                 </AccordionContent>
               </AccordionItem>
 
@@ -283,7 +373,7 @@ export function UrlInputForm({ onLinkAdded }: UrlInputFormProps) {
                             onCheckedChange={(checked) => {
                                 field.onChange(checked);
                                 if (checked && form.getValues('enableABTesting')) {
-                                    form.setValue('enableABTesting', false); // A/B testing off if rotation is on
+                                    form.setValue('enableABTesting', false);
                                 }
                             }}
                           />
@@ -299,7 +389,7 @@ export function UrlInputForm({ onLinkAdded }: UrlInputFormProps) {
                         <div className="space-y-0.5">
                           <FormLabel className="flex items-center"><ShieldCheck className="mr-2 h-4 w-4" />Link Cloaking</FormLabel>
                           <FormDescription>
-                            Mask the destination URL in the browser.
+                            Mask the destination URL in the browser. (May not work with all sites)
                           </FormDescription>
                         </div>
                         <FormControl>
@@ -330,7 +420,7 @@ export function UrlInputForm({ onLinkAdded }: UrlInputFormProps) {
                             />
                           </FormControl>
                         </div>
-                        {form.watch('enableDeepLinking') && ( 
+                        {form.watch('enableDeepLinking') && (
                           <div className="mt-4 space-y-2">
                             <FormField
                               control={form.control}
@@ -352,7 +442,7 @@ export function UrlInputForm({ onLinkAdded }: UrlInputFormProps) {
                                 </FormItem>
                               )}
                             />
-                             <FormMessage>{form.formState.errors.deepLinkIOS?.message || form.formState.errors.root?.deepLinkIOS?.message}</FormMessage>
+                             <FormMessage>{form.formState.errors.deepLinkIOS?.message || form.formState.errors.root?.message}</FormMessage>
                           </div>
                         )}
                       </FormItem>
@@ -376,7 +466,7 @@ export function UrlInputForm({ onLinkAdded }: UrlInputFormProps) {
                                 onCheckedChange={(checked) => {
                                     field.onChange(checked);
                                     if (checked && form.getValues('enableRotation')) {
-                                        form.setValue('enableRotation', false); // Rotation off if A/B is on
+                                        form.setValue('enableRotation', false);
                                     }
                                 }}
                                 disabled={form.watch('enableRotation')}
@@ -391,8 +481,8 @@ export function UrlInputForm({ onLinkAdded }: UrlInputFormProps) {
                             render={({ field: variantBField }) => (
                                 <FormItem className="mt-4">
                                 <FormLabel>Variant B URL</FormLabel>
-                                <FormControl><Input placeholder="https://example.com/variant-b" {...variantBField} /></FormControl>
-                                 <FormDescription>If multiple URLs in main input, A/B test applies to the first URL against this Variant B.</FormDescription>
+                                <FormControl><Input placeholder="example.com/variant-b" {...variantBField} /></FormControl>
+                                 <FormDescription>If multiple URLs in main input, A/B test applies to the first URL against this Variant B. URLs without http(s) default to https.</FormDescription>
                                  <FormMessage />
                                 </FormItem>
                             )}
@@ -441,7 +531,7 @@ export function UrlInputForm({ onLinkAdded }: UrlInputFormProps) {
             </Accordion>
           </CardContent>
           <CardFooter>
-            <Button type="submit" className="w-full md:w-auto" disabled={form.formState.isSubmitting}>
+            <Button type="submit" className="w-full md:w-auto" disabled={form.formState.isSubmitting || !form.formState.isValid && form.formState.isSubmitted}>
               {form.formState.isSubmitting ? 'Processing...' : 'Generate Links'}
             </Button>
           </CardFooter>

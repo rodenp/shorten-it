@@ -1,15 +1,22 @@
 import type { LinkItem, AnalyticEvent, CustomDomain, TeamMember, LinkTarget } from '@/types';
 
 const getShortenerDomain = (): string => {
-  return process.env.NEXT_PUBLIC_LINK_SHORTENER_DOMAIN || 'lnk.wiz';
+  // Ensure this runs only on the client or in a server environment where process.env is available
+  if (typeof process !== 'undefined' && process.env && process.env.NEXT_PUBLIC_LINK_SHORTENER_DOMAIN) {
+    return process.env.NEXT_PUBLIC_LINK_SHORTENER_DOMAIN;
+  }
+  // Fallback if NEXT_PUBLIC_LINK_SHORTENER_DOMAIN is not set or not in a Node.js environment
+  // This could also be an empty string or throw an error if the domain is critical
+  return 'lnk.wiz'; 
 };
+
 
 let linksDB: LinkItem[] = [
   {
     id: '1',
     originalUrl: 'https://example.com/very-long-url-that-needs-shortening',
     targets: [{ url: 'https://example.com/very-long-url-that-needs-shortening' }],
-    shortUrl: `https://${getShortenerDomain()}/abc12`,
+    shortUrl: `https://brand.co/abc12`, // Updated to use custom domain
     slug: 'abc12',
     clickCount: 1256,
     createdAt: new Date(Date.now() - 1 * 24 * 60 * 60 * 1000).toISOString(),
@@ -80,7 +87,8 @@ let analyticsEventsDB: AnalyticEvent[] = [
 
 let customDomainsDB: CustomDomain[] = [
   { id: 'cd1', domainName: 'brand.co', verified: true, createdAt: new Date().toISOString() },
-  { id: 'cd2', domainName: 'my.links', verified: false, createdAt: new Date().toISOString() },
+  { id: 'cd2', domainName: 'my.links', verified: false, createdAt: new Date(Date.now() - 5 * 24 * 60 * 60 * 1000).toISOString() },
+  { id: 'cd3', domainName: 'personal.click', verified: true, createdAt: new Date(Date.now() - 10 * 24 * 60 * 60 * 1000).toISOString() },
 ];
 
 let teamMembersDB: TeamMember[] = [
@@ -88,10 +96,12 @@ let teamMembersDB: TeamMember[] = [
   { id: 'tm2', name: 'Bob The Builder', email: 'bob@example.com', role: 'editor' },
 ];
 
+const generateMockId = () => {
+  return Date.now().toString(36) + Math.random().toString(36).substring(2, 9);
+}
+
 // --- Link Functions ---
 export const getMockLinks = (): LinkItem[] => {
-  // Ensure linksDB uses the current shortener domain if it was updated after initial load
-  // This is more relevant if linksDB could be mutated and re-fetched, but good practice for consistency.
   const currentDomain = getShortenerDomain();
   return JSON.parse(JSON.stringify(linksDB.map(link => ({
     ...link,
@@ -107,13 +117,11 @@ export const getTotalClicks = (): number => {
   return linksDB.reduce((sum, link) => sum + (link.clickCount || 0), 0);
 };
 
-const generateMockId = () => {
-  return Date.now().toString(36) + Math.random().toString(36).substring(2, 9);
-}
-
-const generateSlug = () => {
+const generateSlug = (domain?: string) => {
   let slug = Math.random().toString(36).substring(2, 8);
-  while (linksDB.some(l => l.slug === slug)) {
+  // Ensure slug is unique for the given domain (or default domain if none provided)
+  const targetDomain = domain || getShortenerDomain();
+  while (linksDB.some(l => l.slug === slug && (l.customDomain || getShortenerDomain()) === targetDomain)) {
     slug = Math.random().toString(36).substring(2, 8);
   }
   return slug;
@@ -132,15 +140,16 @@ interface AddMockLinkParams {
   deepLinkAndroid?: string;
   enableRetargeting?: boolean;
   retargetingPixelId?: string;
-  customDomain?: string; // Added to allow specifying custom domain for new links
+  customDomain?: string;
 }
 
 export const addMockLink = (params: AddMockLinkParams): LinkItem => {
-  const slug = params.customAlias || generateSlug();
   const domain = params.customDomain || getShortenerDomain();
+  const slug = params.customAlias || generateSlug(params.customDomain);
 
   if (params.customAlias && linksDB.some(l => l.slug === params.customAlias && (l.customDomain || getShortenerDomain()) === domain)) {
-    console.warn(`Custom alias ${params.customAlias} on domain ${domain} may already exist or lead to conflicts.`);
+    // This case should ideally be prevented by UI validation, but good to have a server-side-like check
+    throw new Error(`Custom alias "${params.customAlias}" on domain "${domain}" already exists.`);
   }
   
   const newLink: LinkItem = {
@@ -161,7 +170,7 @@ export const addMockLink = (params: AddMockLinkParams): LinkItem => {
     retargetingPixels: params.enableRetargeting && params.retargetingPixelId
       ? [{ platform: 'custom', pixelId: params.retargetingPixelId }]
       : undefined,
-    customDomain: params.customDomain,
+    customDomain: params.customDomain, // Store the custom domain used
   };
 
   if (params.isABTest && params.destinationUrls.length >= 2) {
@@ -182,7 +191,7 @@ export const addMockLink = (params: AddMockLinkParams): LinkItem => {
     newLink.targets = [{ url: params.destinationUrls[0] }];
   }
   
-  linksDB.unshift(newLink);
+  linksDB.unshift(newLink); // Add to the beginning to show most recent first
   return JSON.parse(JSON.stringify(newLink));
 };
 
@@ -190,6 +199,8 @@ export const addMockLink = (params: AddMockLinkParams): LinkItem => {
 export const deleteMockLink = (linkId: string): boolean => {
   const initialLength = linksDB.length;
   linksDB = linksDB.filter(link => link.id !== linkId);
+  // Also delete related analytics events for cleanliness, though not strictly required by problem
+  analyticsEventsDB = analyticsEventsDB.filter(event => event.linkId !== linkId);
   return linksDB.length < initialLength;
 };
 
@@ -216,8 +227,57 @@ export const getAnalyticsForLink = (linkId: string): AnalyticEvent[] => {
 
 // --- Custom Domain Functions ---
 export const getMockCustomDomains = (): CustomDomain[] => {
-  return JSON.parse(JSON.stringify(customDomainsDB));
+  return JSON.parse(JSON.stringify(customDomainsDB.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())));
 };
+
+export const addMockCustomDomain = (domainName: string): CustomDomain | { error: string } => {
+  if (!domainName.trim() || !/^[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/.test(domainName.trim())) {
+    return { error: "Invalid domain name format." };
+  }
+  if (customDomainsDB.some(d => d.domainName === domainName.trim())) {
+    return { error: "This domain name already exists." };
+  }
+  const newDomain: CustomDomain = {
+    id: generateMockId(),
+    domainName: domainName.trim(),
+    verified: false, // New domains start as unverified
+    createdAt: new Date().toISOString(),
+  };
+  customDomainsDB.push(newDomain);
+  return JSON.parse(JSON.stringify(newDomain));
+};
+
+export const deleteMockCustomDomain = (domainId: string): boolean => {
+  const initialLength = customDomainsDB.length;
+  customDomainsDB = customDomainsDB.filter(domain => domain.id !== domainId);
+  return customDomainsDB.length < initialLength;
+};
+
+export const toggleVerifyMockCustomDomain = (domainId: string): CustomDomain | undefined => {
+  const domainIndex = customDomainsDB.findIndex(d => d.id === domainId);
+  if (domainIndex > -1) {
+    customDomainsDB[domainIndex].verified = !customDomainsDB[domainIndex].verified;
+    return JSON.parse(JSON.stringify(customDomainsDB[domainIndex]));
+  }
+  return undefined;
+};
+
+export const updateMockCustomDomainName = (domainId: string, newName: string): CustomDomain | { error: string } => {
+  if (!newName.trim() || !/^[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/.test(newName.trim())) {
+    return { error: "Invalid domain name format." };
+  }
+  const domainIndex = customDomainsDB.findIndex(d => d.id === domainId);
+  if (domainIndex === -1) {
+    return { error: "Domain not found." };
+  }
+  // Check if new name conflicts with another existing domain (excluding itself)
+  if (customDomainsDB.some(d => d.domainName === newName.trim() && d.id !== domainId)) {
+    return { error: "This domain name already exists." };
+  }
+  customDomainsDB[domainIndex].domainName = newName.trim();
+  return JSON.parse(JSON.stringify(customDomainsDB[domainIndex]));
+};
+
 
 // --- Team Member Functions ---
 export const getMockTeamMembers = (): TeamMember[] => {
