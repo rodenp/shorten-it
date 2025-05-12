@@ -31,9 +31,10 @@ import {
   MoveDiagonal,
   FlaskConical,
   UserCircle,
-  GitFork,
+  GitFork, // Or FolderKanban if preferred for Link Groups
   FileText,
   Palette,
+  FolderKanban, // Added for consistency if chosen
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
@@ -66,7 +67,7 @@ export default function AppSidebar({ inSheet = false }: AppSidebarProps) {
     { label: 'Link Cloaking', icon: ShieldCheck, href: '/features/cloaking' },
     { label: 'Deep Linking', icon: MoveDiagonal, href: '/features/deeplinking' },
     { label: 'A/B Testing', icon: FlaskConical, href: '/features/ab-testing' },
-    { label: 'Link Groups', icon: GitFork, href: '/features/groups' },
+    { label: 'Link Groups', icon: FolderKanban, href: '/features/groups' }, // Changed to FolderKanban
     { label: 'Export Data', icon: FileText, href: '/features/export' },
   ];
   

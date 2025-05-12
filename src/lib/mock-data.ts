@@ -1,5 +1,5 @@
 
-import type { LinkItem, AnalyticEvent, CustomDomain, TeamMember, LinkTarget } from '@/types';
+import type { LinkItem, AnalyticEvent, CustomDomain, TeamMember, LinkTarget, LinkGroup } from '@/types';
 
 const getShortenerDomain = (): string => {
   return process.env.NEXT_PUBLIC_SHORTENER_DOMAIN || 'lnk.wiz';
@@ -19,6 +19,7 @@ let linksDB: LinkItem[] = [
     customDomain: 'brand.co',
     isCloaked: false,
     tags: ['marketing', 'promo'],
+    groupId: 'group1',
   },
   {
     id: '2',
@@ -32,6 +33,7 @@ let linksDB: LinkItem[] = [
     isCloaked: true,
     deepLinkConfig: { ios: 'myapp://product/123', android: 'myapp://product/123' },
     tags: ['product', 'mobile'],
+    groupId: 'group2',
   },
    {
     id: '3',
@@ -66,6 +68,7 @@ let linksDB: LinkItem[] = [
     createdAt: new Date(Date.now() - 2 * 24 * 60 * 60 * 1000).toISOString(),
     title: 'Product Page Rotation',
     tags: ['ecommerce', 'rotation'],
+    groupId: 'group1',
   },
 ];
 
@@ -119,9 +122,80 @@ let teamMembersDB: TeamMember[] = [
   { id: 'tm2', name: 'Bob The Builder', email: 'bob@example.com', role: 'editor' },
 ];
 
+let linkGroupsDB: LinkGroup[] = [
+    { id: 'group1', name: 'Marketing Campaigns', description: 'All links related to marketing efforts.', createdAt: new Date(Date.now() - 10 * 24 * 60 * 60 * 1000).toISOString() },
+    { id: 'group2', name: 'Product Launches', description: 'Links for new product announcements.', createdAt: new Date(Date.now() - 5 * 24 * 60 * 60 * 1000).toISOString() },
+];
+
+
 const generateMockId = () => {
   return Date.now().toString(36) + Math.random().toString(36).substring(2, 9);
 }
+
+// --- Link Group Functions ---
+export const getMockLinkGroups = (): LinkGroup[] => {
+    return JSON.parse(JSON.stringify(linkGroupsDB.map(group => ({
+        ...group,
+        linkCount: linksDB.filter(link => link.groupId === group.id).length
+    })).sort((a,b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())));
+};
+
+export const getMockLinkGroupById = (groupId: string): LinkGroup | undefined => {
+    const group = linkGroupsDB.find(g => g.id === groupId);
+    if (group) {
+        return JSON.parse(JSON.stringify({
+            ...group,
+            linkCount: linksDB.filter(link => link.groupId === group.id).length
+        }));
+    }
+    return undefined;
+};
+
+export const addMockLinkGroup = (name: string, description?: string): LinkGroup | { error: string } => {
+    if (!name.trim()) {
+        return { error: "Group name cannot be empty." };
+    }
+    if (linkGroupsDB.some(g => g.name.toLowerCase() === name.trim().toLowerCase())) {
+        return { error: "A group with this name already exists." };
+    }
+    const newGroup: LinkGroup = {
+        id: generateMockId(),
+        name: name.trim(),
+        description: description?.trim(),
+        createdAt: new Date().toISOString(),
+    };
+    linkGroupsDB.unshift(newGroup);
+    return JSON.parse(JSON.stringify(newGroup));
+};
+
+export const updateMockLinkGroup = (groupId: string, name: string, description?: string): LinkGroup | { error: string } => {
+    if (!name.trim()) {
+        return { error: "Group name cannot be empty." };
+    }
+    const groupIndex = linkGroupsDB.findIndex(g => g.id === groupId);
+    if (groupIndex === -1) {
+        return { error: "Group not found." };
+    }
+    if (linkGroupsDB.some(g => g.name.toLowerCase() === name.trim().toLowerCase() && g.id !== groupId)) {
+        return { error: "Another group with this name already exists." };
+    }
+    linkGroupsDB[groupIndex].name = name.trim();
+    linkGroupsDB[groupIndex].description = description?.trim();
+    return JSON.parse(JSON.stringify(linkGroupsDB[groupIndex]));
+};
+
+export const deleteMockLinkGroup = (groupId: string): boolean => {
+    const initialLength = linkGroupsDB.length;
+    linkGroupsDB = linkGroupsDB.filter(group => group.id !== groupId);
+    // Remove groupId from links that belonged to this group
+    linksDB.forEach(link => {
+        if (link.groupId === groupId) {
+            link.groupId = undefined;
+        }
+    });
+    return linkGroupsDB.length < initialLength;
+};
+
 
 // --- Link Functions ---
 export const getMockLinks = (): LinkItem[] => {
@@ -163,6 +237,7 @@ interface AddMockLinkParams {
   retargetingPixelId?: string;
   customDomain?: string;
   abTestSplitPercentage?: number; // Defaults to 50 if A/B test is enabled.
+  groupId?: string;
 }
 
 export const addMockLink = (params: AddMockLinkParams): LinkItem => {
@@ -194,12 +269,13 @@ export const addMockLink = (params: AddMockLinkParams): LinkItem => {
       ? [{ platform: 'custom', pixelId: params.retargetingPixelId }]
       : undefined,
     customDomain: params.customDomain,
+    groupId: params.groupId || undefined,
   };
 
   if (params.isABTest && params.variantBUrl && params.destinationUrls.length > 0) {
-    const variantA = primaryUrl;
-    const variantB = params.variantBUrl;
-    const split = params.abTestSplitPercentage || 50;
+     const variantA = primaryUrl;
+     const variantB = params.variantBUrl;
+     const split = params.abTestSplitPercentage || 50;
     newLink.targets = [
       { url: variantA, weight: split },
       { url: variantB, weight: 100 - split },
@@ -342,4 +418,5 @@ export const mockLinks = linksDB;
 export const mockAnalyticsEvents = analyticsEventsDB;
 export const mockCustomDomains = customDomainsDB;
 export const mockTeamMembers = teamMembersDB;
+export const mockLinkGroups = linkGroupsDB; // Export for direct use if needed
 export const getMockAnalyticsForLink = getMockAnalyticsChartDataForLink;

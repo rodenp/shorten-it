@@ -1,6 +1,6 @@
 'use client';
 
-import type { LinkItem } from '@/types';
+import type { LinkItem, LinkGroup } from '@/types';
 import { Button, buttonVariants } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import {
@@ -22,12 +22,13 @@ import {
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
 import { Badge } from '@/components/ui/badge';
-import { Copy, Edit, Trash2, BarChartHorizontalBig, MoreVertical, ExternalLink, Clock, ShieldCheck, MoveDiagonal, FlaskConical, Target, Shuffle } from 'lucide-react';
+import { Copy, Edit, Trash2, BarChartHorizontalBig, MoreVertical, ExternalLink, Clock, ShieldCheck, MoveDiagonal, FlaskConical, Target, Shuffle, FolderKanban } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import Link from 'next/link';
 import { formatDistanceToNow } from 'date-fns';
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import { cn } from '@/lib/utils';
+import { getMockLinkGroupById } from '@/lib/mock-data';
 
 
 interface LinkCardProps {
@@ -37,6 +38,18 @@ interface LinkCardProps {
 
 export function LinkCard({ link, onDelete }: LinkCardProps) {
   const { toast } = useToast();
+  const [groupName, setGroupName] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (link.groupId) {
+      const group = getMockLinkGroupById(link.groupId);
+      if (group) {
+        setGroupName(group.name);
+      }
+    } else {
+      setGroupName(null);
+    }
+  }, [link.groupId]);
 
   const handleCopy = (text: string) => {
     navigator.clipboard.writeText(text);
@@ -49,11 +62,9 @@ export function LinkCard({ link, onDelete }: LinkCardProps) {
 
   const getFeatureIcons = () => {
     const icons = [];
-    // FlaskConical icon if A/B test config is present
     if (link.abTestConfig) {
         icons.push({ icon: FlaskConical, label: `A/B Test (${link.abTestConfig.splitPercentage}%/${100-link.abTestConfig.splitPercentage}%)` });
     }
-    // Shuffle icon if more than one target AND no A/B test config (pure rotation)
     else if (link.targets && link.targets.length > 1) {
         icons.push({ icon: Shuffle, label: `URL Rotation (${link.targets.length})` });
     }
@@ -125,7 +136,6 @@ export function LinkCard({ link, onDelete }: LinkCardProps) {
                   <DropdownMenuSeparator />
                    <AlertDialog>
                     <AlertDialogTrigger asChild>
-                       {/* This is a button that looks like a DropdownMenuItem */}
                       <button
                         type="button"
                         className={cn(
@@ -175,10 +185,15 @@ export function LinkCard({ link, onDelete }: LinkCardProps) {
           </div>
         </div>
 
-        {(featureIcons.length > 0 || (link.tags && link.tags.length > 0)) && (
+        {(featureIcons.length > 0 || (link.tags && link.tags.length > 0) || groupName) && (
           <div className="space-y-2">
+            {groupName && (
+              <Badge variant="outline" className="py-1 px-2 text-xs font-medium">
+                <FolderKanban className="mr-1 h-3 w-3" /> {groupName}
+              </Badge>
+            )}
             {featureIcons.length > 0 && (
-              <div className="flex items-center gap-2 flex-wrap">
+              <div className={cn("flex items-center gap-2 flex-wrap", groupName && "mt-2")}>
                 {featureIcons.map(f => (
                   <Badge variant="secondary" key={f.label} className="py-1 px-2 text-xs">
                     <f.icon className="mr-1 h-3 w-3" /> {f.label}
@@ -187,7 +202,7 @@ export function LinkCard({ link, onDelete }: LinkCardProps) {
               </div>
             )}
             {link.tags && link.tags.length > 0 && (
-              <div className="flex items-center gap-1.5 flex-wrap mt-2">
+              <div className={cn("flex items-center gap-1.5 flex-wrap", (groupName || featureIcons.length > 0) && "mt-2")}>
                 {link.tags.map(tag => (
                   <Badge variant="outline" key={tag} className="py-0.5 px-1.5 text-xs">{tag}</Badge>
                 ))}

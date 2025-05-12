@@ -2,46 +2,52 @@
 
 import { useState, useEffect, useMemo, useCallback } from 'react';
 import { LinkCard } from '@/components/dashboard/link-card';
-import { getMockLinks, deleteMockLink } from '@/lib/mock-data';
-import type { LinkItem } from '@/types';
+import { getMockLinks, deleteMockLink, getMockLinkGroups } from '@/lib/mock-data';
+import type { LinkItem, LinkGroup } from '@/types';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Button } from '@/components/ui/button';
-import { ListFilter, Search, PlusCircle, ArrowDownUp } from 'lucide-react';
+import { ListFilter, Search, PlusCircle, ArrowDownUp, FolderKanban } from 'lucide-react';
 import Link from 'next/link';
 import { useToast } from '@/hooks/use-toast';
 
 export default function MyLinksPage() {
   const [allLinks, setAllLinks] = useState<LinkItem[]>([]);
+  const [linkGroups, setLinkGroups] = useState<LinkGroup[]>([]);
   const [searchTerm, setSearchTerm] = useState('');
   const [sortBy, setSortBy] = useState('createdAt_desc'); // e.g., 'clicks_desc', 'title_asc'
+  const [filterGroupId, setFilterGroupId] = useState('all'); // 'all' or group.id
   const { toast } = useToast();
 
-  const fetchLinks = useCallback(() => {
+  const fetchLinksAndGroups = useCallback(() => {
     setAllLinks(getMockLinks());
+    setLinkGroups(getMockLinkGroups());
   }, []);
 
   useEffect(() => {
-    fetchLinks();
-  }, [fetchLinks]);
+    fetchLinksAndGroups();
+  }, [fetchLinksAndGroups]);
 
   const handleLinkDelete = useCallback((linkId: string) => {
     if (deleteMockLink(linkId)) {
       toast({ title: 'Link Deleted', description: 'The link has been successfully deleted.', variant: 'default' });
-      fetchLinks(); // Refresh the list
+      fetchLinksAndGroups(); // Refresh the list
     } else {
       toast({ title: 'Error Deleting Link', description: 'Could not delete the link.', variant: 'destructive' });
     }
-  }, [fetchLinks, toast]);
+  }, [fetchLinksAndGroups, toast]);
   
   const filteredAndSortedLinks = useMemo(() => {
-    return [...allLinks] // Create a new array for sorting
+    return [...allLinks] 
       .filter(link => 
-        link.title?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        link.shortUrl.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        link.originalUrl.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        link.slug.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        link.tags?.some(tag => tag.toLowerCase().includes(searchTerm.toLowerCase()))
+        (filterGroupId === 'all' || link.groupId === filterGroupId) &&
+        (
+          link.title?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+          link.shortUrl.toLowerCase().includes(searchTerm.toLowerCase()) ||
+          link.originalUrl.toLowerCase().includes(searchTerm.toLowerCase()) ||
+          link.slug.toLowerCase().includes(searchTerm.toLowerCase()) ||
+          link.tags?.some(tag => tag.toLowerCase().includes(searchTerm.toLowerCase()))
+        )
       )
       .sort((a, b) => {
         const [key, order] = sortBy.split('_');
@@ -57,7 +63,7 @@ export default function MyLinksPage() {
         
         return order === 'desc' ? comparison : -comparison;
       });
-  }, [allLinks, searchTerm, sortBy]);
+  }, [allLinks, searchTerm, sortBy, filterGroupId]);
 
   return (
     <div className="container mx-auto py-2">
@@ -109,10 +115,28 @@ export default function MyLinksPage() {
             </Select>
           </div>
            <div>
-             <Button variant="outline" className="w-full mt-auto" onClick={() => alert('Filter functionality not yet implemented.')}>
-                <ListFilter className="mr-2 h-4 w-4" /> Filters
-             </Button>
+            <label htmlFor="filter-group" className="block text-sm font-medium text-muted-foreground mb-1">
+                <FolderKanban className="inline h-4 w-4 mr-1" />
+                Filter by Group
+            </label>
+            <Select value={filterGroupId} onValueChange={setFilterGroupId}>
+              <SelectTrigger id="filter-group" className="w-full">
+                <SelectValue placeholder="Filter by group..." />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Groups</SelectItem>
+                {linkGroups.map(group => (
+                    <SelectItem key={group.id} value={group.id}>{group.name}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
            </div>
+           {/* Placeholder for more advanced filters */}
+           {/* <div>
+             <Button variant="outline" className="w-full mt-auto" onClick={() => alert('More filter functionality not yet implemented.')}>
+                <ListFilter className="mr-2 h-4 w-4" /> More Filters
+             </Button>
+           </div> */}
         </div>
       </div>
 
@@ -131,7 +155,7 @@ export default function MyLinksPage() {
           <p className="text-muted-foreground">
             {allLinks.length === 0 
               ? "Create your first link from the dashboard." 
-              : `Your search for "${searchTerm}" did not match any links. Try a different term.`
+              : `Your search/filter criteria did not match any links. Try a different term or filter.`
             }
           </p>
         </div>

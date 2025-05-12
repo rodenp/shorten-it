@@ -20,9 +20,9 @@ import { useToast } from '@/hooks/use-toast';
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/components/ui/accordion';
 import { Switch } from '@/components/ui/switch';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Shuffle, ShieldCheck, MoveDiagonal, FlaskConical, Target, Tag, Settings2, Link as LinkIcon, Globe, Percent } from 'lucide-react';
-import { addMockLink, getMockCustomDomains } from '@/lib/mock-data';
-import type { CustomDomain } from '@/types';
+import { Shuffle, ShieldCheck, MoveDiagonal, FlaskConical, Target, Tag, Settings2, Link as LinkIcon, Globe, Percent, FolderKanban } from 'lucide-react';
+import { addMockLink, getMockCustomDomains, getMockLinkGroups } from '@/lib/mock-data';
+import type { CustomDomain, LinkGroup } from '@/types';
 import { useEffect, useState } from 'react';
 import { Slider } from '@/components/ui/slider';
 
@@ -49,6 +49,7 @@ const urlInputFormSchema = z.object({
   }),
   title: z.string().optional(),
   tags: z.string().optional(),
+  groupId: z.string().optional(),
   customDomain: z.string().optional(),
   enableRotation: z.boolean().default(false).optional(),
   enableCloaking: z.boolean().default(false).optional(),
@@ -112,6 +113,7 @@ const defaultValues: Partial<UrlInputFormValues> = {
   customAlias: '',
   title: '',
   tags: '',
+  groupId: 'none',
   customDomain: 'default',
 };
 
@@ -122,6 +124,7 @@ interface UrlInputFormProps {
 export function UrlInputForm({ onLinkAdded }: UrlInputFormProps) {
   const { toast } = useToast();
   const [verifiedDomains, setVerifiedDomains] = useState<CustomDomain[]>([]);
+  const [linkGroups, setLinkGroups] = useState<LinkGroup[]>([]);
   const form = useForm<UrlInputFormValues>({
     resolver: zodResolver(urlInputFormSchema),
     defaultValues,
@@ -134,6 +137,7 @@ export function UrlInputForm({ onLinkAdded }: UrlInputFormProps) {
     const domains = getMockCustomDomains();
     setVerifiedDomains(domains.filter(d => d.verified));
     setShortenerDomain(getShortenerDomain());
+    setLinkGroups(getMockLinkGroups());
   }, []);
 
   async function onSubmit(data: UrlInputFormValues) {
@@ -161,6 +165,7 @@ export function UrlInputForm({ onLinkAdded }: UrlInputFormProps) {
     let errorMessages: string[] = [];
 
     const selectedCustomDomainName = data.customDomain === 'default' ? undefined : data.customDomain;
+    const selectedGroupId = data.groupId === 'none' ? undefined : data.groupId;
 
     const commonPropsForAddMockLink: Omit<Parameters<typeof addMockLink>[0], 'destinationUrls' | 'isRotation' | 'isABTest' | 'variantBUrl' | 'abTestSplitPercentage'> = {
       title: data.title,
@@ -170,6 +175,7 @@ export function UrlInputForm({ onLinkAdded }: UrlInputFormProps) {
       deepLinkAndroid: data.deepLinkAndroid,
       retargetingPixelId: data.enableRetargeting ? data.retargetingPixelId : undefined,
       customDomain: selectedCustomDomainName,
+      groupId: selectedGroupId,
     };
 
     try {
@@ -331,6 +337,32 @@ export function UrlInputForm({ onLinkAdded }: UrlInputFormProps) {
                       </FormItem>
                     )}
                   />
+                   <FormField
+                    control={form.control}
+                    name="groupId"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel className="flex items-center"><FolderKanban className="mr-2 h-4 w-4" />Link Group (Optional)</FormLabel>
+                        <Select onValueChange={field.onChange} defaultValue={field.value}>
+                          <FormControl>
+                            <SelectTrigger>
+                              <SelectValue placeholder="Select a group" />
+                            </SelectTrigger>
+                          </FormControl>
+                          <SelectContent>
+                            <SelectItem value="none">No Group</SelectItem>
+                            {linkGroups.map(group => (
+                              <SelectItem key={group.id} value={group.id}>
+                                {group.name}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                        <FormDescription>Assign this link/these links to a group for organization.</FormDescription>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
                   <FormField
                     control={form.control}
                     name="customDomain"
@@ -433,11 +465,11 @@ export function UrlInputForm({ onLinkAdded }: UrlInputFormProps) {
                                 <FormField
                                 control={form.control}
                                 name="abTestSplitPercentage"
-                                render={({ field }) => (
+                                render={({ field: sliderField }) => (
                                     <FormItem>
                                     <FormLabel className="flex items-center">
                                         <Percent className="mr-2 h-4 w-4" />
-                                        Traffic Split for Variant A ({field.value || 50}%)
+                                        Traffic Split for Variant A ({sliderField.value || 50}%)
                                     </FormLabel>
                                     <div className="flex items-center gap-2">
                                         <Slider
@@ -445,10 +477,10 @@ export function UrlInputForm({ onLinkAdded }: UrlInputFormProps) {
                                             max={100}
                                             step={1}
                                             className="w-[calc(100%-4rem)]"
-                                            onValueChange={(value) => field.onChange(value[0])}
-                                            value={[field.value || 50]}
+                                            onValueChange={(value) => sliderField.onChange(value[0])}
+                                            value={[sliderField.value || 50]}
                                         />
-                                        <span className="w-12 text-right">({100-(field.value || 50)}% to B)</span>
+                                        <span className="w-12 text-right">({100-(sliderField.value || 50)}% to B)</span>
                                     </div>
                                     <FormDescription>Adjust the traffic percentage for Variant A. The remainder goes to Variant B.</FormDescription>
                                     <FormMessage />
