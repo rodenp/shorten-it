@@ -2,13 +2,13 @@
 import type { LinkItem, AnalyticEvent, CustomDomain, TeamMember, LinkTarget } from '@/types';
 
 const getShortenerDomain = (): string => {
-  // Ensure this runs only on the client or in a server environment where process.env is available
-  if (typeof process !== 'undefined' && process.env && process.env.NEXT_PUBLIC_SHORTENER_DOMAIN) {
-    return process.env.NEXT_PUBLIC_SHORTENER_DOMAIN;
-  }
-  // Fallback if NEXT_PUBLIC_SHORTENER_DOMAIN is not set or not in a Node.js environment
-  return 'lnk.wiz'; 
+  // In a Next.js app, environment variables prefixed with NEXT_PUBLIC_ are exposed to the browser.
+  // They are replaced at build time.
+  // Fallback if NEXT_PUBLIC_SHORTENER_DOMAIN is not set.
+  return process.env.NEXT_PUBLIC_SHORTENER_DOMAIN || 'lnk.wiz';
 };
+
+const defaultShortenerDomain = getShortenerDomain();
 
 
 let linksDB: LinkItem[] = [
@@ -16,7 +16,7 @@ let linksDB: LinkItem[] = [
     id: '1',
     originalUrl: 'https://example.com/very-long-url-that-needs-shortening',
     targets: [{ url: 'https://example.com/very-long-url-that-needs-shortening' }],
-    shortUrl: `https://brand.co/abc12`, 
+    shortUrl: `https://brand.co/abc12`, // This link uses its specific customDomain
     slug: 'abc12',
     clickCount: 1256,
     createdAt: new Date(Date.now() - 1 * 24 * 60 * 60 * 1000).toISOString(),
@@ -29,7 +29,7 @@ let linksDB: LinkItem[] = [
     id: '2',
     originalUrl: 'https://another-example.io/another-long-feature-page',
     targets: [{ url: 'https://another-example.io/another-long-feature-page' }],
-    shortUrl: `https://${getShortenerDomain()}/def34`,
+    shortUrl: `https://${defaultShortenerDomain}/def34`, // Uses default domain from .env
     slug: 'def34',
     clickCount: 872,
     createdAt: new Date(Date.now() - 3 * 24 * 60 * 60 * 1000).toISOString(),
@@ -37,6 +37,7 @@ let linksDB: LinkItem[] = [
     isCloaked: true,
     deepLinkConfig: { ios: 'myapp://product/123', android: 'myapp://product/123' },
     tags: ['product', 'mobile'],
+    // customDomain is undefined, so defaultShortenerDomain is used
   },
    {
     id: '3',
@@ -45,13 +46,14 @@ let linksDB: LinkItem[] = [
       { url: 'https://yet-another-site.org/blog/article-variant-a', weight: 50 },
       { url: 'https://yet-another-site.org/blog/article-variant-b', weight: 50 }
     ],
-    shortUrl: `https://${getShortenerDomain()}/ghi56`,
+    shortUrl: `https://${defaultShortenerDomain}/ghi56`, // Uses default domain from .env
     slug: 'ghi56',
     clickCount: 3045,
     createdAt: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString(),
     title: 'Blog Post A/B Test',
     abTestConfig: { variantA: 'https://yet-another-site.org/blog/article-variant-a', variantB: 'https://yet-another-site.org/blog/article-variant-b', split: 50 },
     tags: ['blog', 'ab-test'],
+    // customDomain is undefined
   },
   {
     id: '4',
@@ -61,12 +63,13 @@ let linksDB: LinkItem[] = [
         { url: 'https://company.com/product-b', weight: 33 },
         { url: 'https://company.com/product-c', weight: 33 },
     ],
-    shortUrl: `https://${getShortenerDomain()}/jkl78`,
+    shortUrl: `https://${defaultShortenerDomain}/jkl78`, // Uses default domain from .env
     slug: 'jkl78',
     clickCount: 550,
     createdAt: new Date(Date.now() - 2 * 24 * 60 * 60 * 1000).toISOString(),
     title: 'Product Page Rotation',
     tags: ['ecommerce', 'rotation'],
+    // customDomain is undefined
     // No abTestConfig for pure rotation
   },
 ];
@@ -127,10 +130,11 @@ const generateMockId = () => {
 
 // --- Link Functions ---
 export const getMockLinks = (): LinkItem[] => {
-  const currentDomain = getShortenerDomain();
+  const currentGlobalDomain = getShortenerDomain(); // Get current env setting
   return JSON.parse(JSON.stringify(linksDB.map(link => ({
     ...link,
-    shortUrl: `https://${link.customDomain || currentDomain}/${link.slug}`
+    // Dynamically construct shortUrl based on link's customDomain or the global default
+    shortUrl: `https://${link.customDomain || currentGlobalDomain}/${link.slug}`
   }))));
 };
 
@@ -152,52 +156,49 @@ const generateSlug = (domain?: string) => {
 }
 
 interface AddMockLinkParams {
-  destinationUrls: string[]; 
+  destinationUrls: string[];
   isRotation?: boolean;
   isABTest?: boolean;
   customAlias?: string;
   title?: string;
-  tags?: string; 
+  tags?: string;
   isCloaked?: boolean;
-  enableDeepLinking?: boolean; // This can be simplified, use deepLinkConfig directly
   deepLinkIOS?: string;
   deepLinkAndroid?: string;
-  enableRetargeting?: boolean; // This can be simplified
   retargetingPixelId?: string;
   customDomain?: string;
 }
 
 export const addMockLink = (params: AddMockLinkParams): LinkItem => {
-  const domain = params.customDomain || getShortenerDomain();
+  const effectiveDomain = params.customDomain || getShortenerDomain();
   const slug = params.customAlias || generateSlug(params.customDomain);
 
-  if (params.customAlias && linksDB.some(l => l.slug === params.customAlias && (l.customDomain || getShortenerDomain()) === domain)) {
-    throw new Error(`Custom alias "${params.customAlias}" on domain "${domain}" already exists.`);
+  if (params.customAlias && linksDB.some(l => l.slug === params.customAlias && (l.customDomain || getShortenerDomain()) === effectiveDomain)) {
+    throw new Error(`Custom alias "${params.customAlias}" on domain "${effectiveDomain}" already exists.`);
   }
-  
+
   const newLink: LinkItem = {
     id: generateMockId(),
-    originalUrl: params.destinationUrls[0], 
-    shortUrl: `https://${domain}/${slug}`,
+    originalUrl: params.destinationUrls[0],
+    shortUrl: `https://${effectiveDomain}/${slug}`, // Store with the domain used at creation
     slug: slug,
     clickCount: 0,
     createdAt: new Date().toISOString(),
     title: params.title,
     tags: params.tags ? params.tags.split(',').map(t => t.trim()).filter(Boolean) : undefined,
     isCloaked: params.isCloaked,
-    targets: [], 
-    // Set abTestConfig to undefined initially, it will be populated only if isABTest is true and not rotation
-    abTestConfig: undefined, 
+    targets: [],
+    abTestConfig: undefined,
     deepLinkConfig: (params.deepLinkIOS || params.deepLinkAndroid)
       ? { ios: params.deepLinkIOS || '', android: params.deepLinkAndroid || '' }
       : undefined,
     retargetingPixels: params.retargetingPixelId
-      ? [{ platform: 'custom', pixelId: params.retargetingPixelId }] // Simplified from enableRetargeting
+      ? [{ platform: 'custom', pixelId: params.retargetingPixelId }]
       : undefined,
-    customDomain: params.customDomain,
+    customDomain: params.customDomain, // Store the custom domain if one was explicitly used
   };
 
-  if (params.isRotation && params.destinationUrls.length > 0) { // Prioritize rotation if both flags somehow true
+  if (params.isRotation && params.destinationUrls.length > 0) {
     const numUrls = params.destinationUrls.length;
     let baseWeight = Math.floor(100 / numUrls);
     let remainder = 100 % numUrls;
@@ -205,8 +206,7 @@ export const addMockLink = (params: AddMockLinkParams): LinkItem => {
       let weight = baseWeight + (index < remainder ? 1 : 0);
       return { url, weight };
     });
-    // Ensure abTestConfig is not set if it's a rotation link
-    newLink.abTestConfig = undefined; 
+    newLink.abTestConfig = undefined;
   } else if (params.isABTest && params.destinationUrls.length >= 2) {
     newLink.targets = [
       { url: params.destinationUrls[0], weight: 50 },
@@ -216,8 +216,10 @@ export const addMockLink = (params: AddMockLinkParams): LinkItem => {
   } else {
     newLink.targets = [{ url: params.destinationUrls[0] }];
   }
-  
-  linksDB.unshift(newLink); 
+
+  linksDB.unshift(newLink);
+  // Return a copy, ensuring the shortUrl reflects the domain used at creation.
+  // getMockLinks will re-evaluate if the global default changes and no custom domain is set.
   return JSON.parse(JSON.stringify(newLink));
 };
 
@@ -230,12 +232,13 @@ export const deleteMockLink = (linkId: string): boolean => {
 };
 
 export const getMockLinkBySlugOrId = (slugOrId: string): LinkItem | undefined => {
-  const currentDomain = getShortenerDomain();
+  const currentGlobalDomain = getShortenerDomain();
   const link = linksDB.find(l => l.slug === slugOrId || l.id === slugOrId);
   if (link) {
+    // Return a copy, constructing the shortUrl dynamically based on its customDomain or current global default
     return JSON.parse(JSON.stringify({
       ...link,
-      shortUrl: `https://${link.customDomain || currentDomain}/${link.slug}`
+      shortUrl: `https://${link.customDomain || currentGlobalDomain}/${link.slug}`
     }));
   }
   return undefined;
@@ -265,7 +268,7 @@ export const addMockCustomDomain = (domainName: string): CustomDomain | { error:
   const newDomain: CustomDomain = {
     id: generateMockId(),
     domainName: domainName.trim(),
-    verified: false, 
+    verified: false,
     createdAt: new Date().toISOString(),
   };
   customDomainsDB.push(newDomain);
@@ -312,7 +315,7 @@ export const getMockTeamMembers = (): TeamMember[] => {
 export const getMockAnalyticsChartDataForLink = (linkId: string, days: number = 7): { date: string; clicks: number }[] => {
   const data: { date: string; clicks: number }[] = [];
   const link = linksDB.find(l => l.id === linkId);
-  
+
   if (!link) return [];
 
   const baseClicks = Math.floor((link.clickCount || 0) / (days > 0 ? Math.min(days, (link.clickCount || 1)) : 1));
@@ -320,22 +323,22 @@ export const getMockAnalyticsChartDataForLink = (linkId: string, days: number = 
   if (days <= 0) {
     return [];
   }
-  const numPoints = Math.max(1, Math.min(days, 30)); 
+  const numPoints = Math.max(1, Math.min(days, 30));
 
   for (let i = 0; i < numPoints; i++) {
     const currentDate = new Date();
     const dayOffset = Math.floor((days / numPoints) * (numPoints - 1 - i));
     currentDate.setDate(currentDate.getDate() - dayOffset);
-    
+
     data.push({
       date: currentDate.toISOString().split('T')[0],
       clicks: Math.max(0, baseClicks + Math.floor(Math.random() * (baseClicks * 0.5)) - Math.floor(baseClicks * 0.25) + (i % 5 - 2)),
     });
   }
-  return data.sort((a,b) => new Date(a.date).getTime() - new Date(b.date).getTime()); 
+  return data.sort((a,b) => new Date(a.date).getTime() - new Date(b.date).getTime());
 };
 
-export const mockLinks = linksDB; 
+export const mockLinks = linksDB;
 export const mockAnalyticsEvents = analyticsEventsDB;
 export const mockCustomDomains = customDomainsDB;
 export const mockTeamMembers = teamMembersDB;
