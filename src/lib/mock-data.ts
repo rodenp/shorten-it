@@ -1,11 +1,15 @@
 import type { LinkItem, AnalyticEvent, CustomDomain, TeamMember, LinkTarget } from '@/types';
 
+const getShortenerDomain = (): string => {
+  return process.env.NEXT_PUBLIC_LINK_SHORTENER_DOMAIN || 'lnk.wiz';
+};
+
 let linksDB: LinkItem[] = [
   {
     id: '1',
     originalUrl: 'https://example.com/very-long-url-that-needs-shortening',
     targets: [{ url: 'https://example.com/very-long-url-that-needs-shortening' }],
-    shortUrl: 'https://lnk.wiz/abc12',
+    shortUrl: `https://${getShortenerDomain()}/abc12`,
     slug: 'abc12',
     clickCount: 1256,
     createdAt: new Date(Date.now() - 1 * 24 * 60 * 60 * 1000).toISOString(),
@@ -18,7 +22,7 @@ let linksDB: LinkItem[] = [
     id: '2',
     originalUrl: 'https://another-example.io/another-long-feature-page',
     targets: [{ url: 'https://another-example.io/another-long-feature-page' }],
-    shortUrl: 'https://lnk.wiz/def34',
+    shortUrl: `https://${getShortenerDomain()}/def34`,
     slug: 'def34',
     clickCount: 872,
     createdAt: new Date(Date.now() - 3 * 24 * 60 * 60 * 1000).toISOString(),
@@ -34,7 +38,7 @@ let linksDB: LinkItem[] = [
       { url: 'https://yet-another-site.org/blog/article-variant-a', weight: 50 },
       { url: 'https://yet-another-site.org/blog/article-variant-b', weight: 50 }
     ],
-    shortUrl: 'https://lnk.wiz/ghi56',
+    shortUrl: `https://${getShortenerDomain()}/ghi56`,
     slug: 'ghi56',
     clickCount: 3045,
     createdAt: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString(),
@@ -86,7 +90,13 @@ let teamMembersDB: TeamMember[] = [
 
 // --- Link Functions ---
 export const getMockLinks = (): LinkItem[] => {
-  return JSON.parse(JSON.stringify(linksDB)); // Return a deep copy
+  // Ensure linksDB uses the current shortener domain if it was updated after initial load
+  // This is more relevant if linksDB could be mutated and re-fetched, but good practice for consistency.
+  const currentDomain = getShortenerDomain();
+  return JSON.parse(JSON.stringify(linksDB.map(link => ({
+    ...link,
+    shortUrl: `https://${link.customDomain || currentDomain}/${link.slug}`
+  }))));
 };
 
 export const getLinksCount = (): number => {
@@ -110,47 +120,48 @@ const generateSlug = () => {
 }
 
 interface AddMockLinkParams {
-  destinationUrls: string[]; // URLs for this specific link item. If A/B, [A, B]. If rotation, [url1, url2, ...]. Else [singleUrl]
+  destinationUrls: string[]; 
   isRotation?: boolean;
   isABTest?: boolean;
   customAlias?: string;
   title?: string;
-  tags?: string; // comma-separated
+  tags?: string; 
   isCloaked?: boolean;
   enableDeepLinking?: boolean;
   deepLinkIOS?: string;
   deepLinkAndroid?: string;
   enableRetargeting?: boolean;
   retargetingPixelId?: string;
+  customDomain?: string; // Added to allow specifying custom domain for new links
 }
 
 export const addMockLink = (params: AddMockLinkParams): LinkItem => {
   const slug = params.customAlias || generateSlug();
+  const domain = params.customDomain || getShortenerDomain();
 
-  if (params.customAlias && linksDB.some(l => l.slug === params.customAlias)) {
-    // This case should ideally be prevented by form validation or handled by appending to slug.
-    // For mock, we'll proceed, potentially creating a duplicate slug if not handled by caller.
-    console.warn(`Custom alias ${params.customAlias} may already exist or lead to conflicts if multiple links are created with the same alias.`);
+  if (params.customAlias && linksDB.some(l => l.slug === params.customAlias && (l.customDomain || getShortenerDomain()) === domain)) {
+    console.warn(`Custom alias ${params.customAlias} on domain ${domain} may already exist or lead to conflicts.`);
   }
   
   const newLink: LinkItem = {
     id: generateMockId(),
-    originalUrl: params.destinationUrls[0], // Primary URL for display
-    shortUrl: `https://lnk.wiz/${slug}`,
+    originalUrl: params.destinationUrls[0], 
+    shortUrl: `https://${domain}/${slug}`,
     slug: slug,
     clickCount: 0,
     createdAt: new Date().toISOString(),
     title: params.title,
     tags: params.tags ? params.tags.split(',').map(t => t.trim()).filter(Boolean) : undefined,
     isCloaked: params.isCloaked,
-    targets: [], // Will be populated below
+    targets: [], 
     deepLinkConfig: params.enableDeepLinking && (params.deepLinkIOS || params.deepLinkAndroid)
       ? { ios: params.deepLinkIOS || '', android: params.deepLinkAndroid || '' }
       : undefined,
-    abTestConfig: undefined, // Will be populated if isABTest is true
+    abTestConfig: undefined, 
     retargetingPixels: params.enableRetargeting && params.retargetingPixelId
       ? [{ platform: 'custom', pixelId: params.retargetingPixelId }]
       : undefined,
+    customDomain: params.customDomain,
   };
 
   if (params.isABTest && params.destinationUrls.length >= 2) {
@@ -168,7 +179,6 @@ export const addMockLink = (params: AddMockLinkParams): LinkItem => {
       return { url, weight };
     });
   } else {
-    // Single destination URL
     newLink.targets = [{ url: params.destinationUrls[0] }];
   }
   
@@ -184,8 +194,15 @@ export const deleteMockLink = (linkId: string): boolean => {
 };
 
 export const getMockLinkBySlugOrId = (slugOrId: string): LinkItem | undefined => {
+  const currentDomain = getShortenerDomain();
   const link = linksDB.find(l => l.slug === slugOrId || l.id === slugOrId);
-  return link ? JSON.parse(JSON.stringify(link)) : undefined;
+  if (link) {
+    return JSON.parse(JSON.stringify({
+      ...link,
+      shortUrl: `https://${link.customDomain || currentDomain}/${link.slug}`
+    }));
+  }
+  return undefined;
 };
 
 // --- Analytics Event Functions ---
@@ -212,40 +229,30 @@ export const getMockAnalyticsChartDataForLink = (linkId: string, days: number = 
   const data: { date: string; clicks: number }[] = [];
   const link = linksDB.find(l => l.id === linkId);
   
-  if (!link) return []; // If link not found, return empty data
+  if (!link) return [];
 
   const baseClicks = Math.floor((link.clickCount || 0) / (days > 0 ? Math.min(days, (link.clickCount || 1)) : 1));
-
 
   if (days <= 0) {
     return [];
   }
-  // Ensure numPoints is reasonable, especially if days is large. Max 30 points for chart.
   const numPoints = Math.max(1, Math.min(days, 30)); 
 
   for (let i = 0; i < numPoints; i++) {
     const currentDate = new Date();
-    // Distribute points somewhat evenly over the 'days' period
     const dayOffset = Math.floor((days / numPoints) * (numPoints - 1 - i));
     currentDate.setDate(currentDate.getDate() - dayOffset);
     
     data.push({
       date: currentDate.toISOString().split('T')[0],
-       // Make clicks vary a bit, ensure non-negative
       clicks: Math.max(0, baseClicks + Math.floor(Math.random() * (baseClicks * 0.5)) - Math.floor(baseClicks * 0.25) + (i % 5 - 2)),
     });
   }
-  // Sort by date ascending for the chart
   return data.sort((a,b) => new Date(a.date).getTime() - new Date(b.date).getTime()); 
 };
 
-// Expose the original mockLinks array for pages that might still be using it directly,
-// but encourage use of new functions.
 export const mockLinks = linksDB; 
 export const mockAnalyticsEvents = analyticsEventsDB;
 export const mockCustomDomains = customDomainsDB;
 export const mockTeamMembers = teamMembersDB;
-// Keep the old function name for compatibility if some components still use it, 
-// but it now calls the new chart data function.
 export const getMockAnalyticsForLink = getMockAnalyticsChartDataForLink;
-
