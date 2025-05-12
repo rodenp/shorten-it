@@ -1,4 +1,4 @@
-import type { LinkItem, AnalyticEvent, CustomDomain, TeamMember } from '@/types';
+import type { LinkItem, AnalyticEvent, CustomDomain, TeamMember, LinkTarget } from '@/types';
 
 let linksDB: LinkItem[] = [
   {
@@ -27,6 +27,21 @@ let linksDB: LinkItem[] = [
     deepLinkConfig: { ios: 'myapp://product/123', android: 'myapp://product/123' },
     tags: ['product', 'mobile'],
   },
+   {
+    id: '3',
+    originalUrl: 'https://yet-another-site.org/blog/exciting-article-post',
+    targets: [
+      { url: 'https://yet-another-site.org/blog/article-variant-a', weight: 50 },
+      { url: 'https://yet-another-site.org/blog/article-variant-b', weight: 50 }
+    ],
+    shortUrl: 'https://lnk.wiz/ghi56',
+    slug: 'ghi56',
+    clickCount: 3045,
+    createdAt: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString(),
+    title: 'Blog Post A/B Test',
+    abTestConfig: { variantA: 'https://yet-another-site.org/blog/article-variant-a', variantB: 'https://yet-another-site.org/blog/article-variant-b', split: 50 },
+    tags: ['blog', 'ab-test'],
+  },
 ];
 
 let analyticsEventsDB: AnalyticEvent[] = [
@@ -47,6 +62,15 @@ let analyticsEventsDB: AnalyticEvent[] = [
     deviceType: 'mobile',
     browser: 'Safari',
     referrer: 'twitter.com',
+  },
+  {
+    id: 'evt3',
+    linkId: '3',
+    timestamp: new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString(),
+    country: 'UK',
+    deviceType: 'desktop',
+    browser: 'Firefox',
+    referrer: 'linkedin.com',
   },
 ];
 
@@ -70,8 +94,12 @@ export const getLinksCount = (): number => {
 };
 
 export const getTotalClicks = (): number => {
-  return linksDB.reduce((sum, link) => sum + link.clickCount, 0);
+  return linksDB.reduce((sum, link) => sum + (link.clickCount || 0), 0);
 };
+
+const generateMockId = () => {
+  return Date.now().toString(36) + Math.random().toString(36).substring(2, 9);
+}
 
 const generateSlug = () => {
   let slug = Math.random().toString(36).substring(2, 8);
@@ -81,58 +109,73 @@ const generateSlug = () => {
   return slug;
 }
 
-export const addMockLink = (
-  linkData: {
-    originalUrl: string;
-    customAlias?: string;
-    title?: string;
-    tags?: string; // comma-separated
-    enableRotation?: boolean; // Not fully implemented for mock
-    enableCloaking?: boolean;
-    enableDeepLinking?: boolean;
-    deepLinkIOS?: string;
-    deepLinkAndroid?: string;
-    enableABTesting?: boolean;
-    abTestVariantBUrl?: string;
-    enableRetargeting?: boolean;
-    retargetingPixelId?: string;
-    // customDomain?: string; // Not used in form yet directly
-  }
-): LinkItem => {
-  const slug = linkData.customAlias || generateSlug();
+interface AddMockLinkParams {
+  destinationUrls: string[]; // URLs for this specific link item. If A/B, [A, B]. If rotation, [url1, url2, ...]. Else [singleUrl]
+  isRotation?: boolean;
+  isABTest?: boolean;
+  customAlias?: string;
+  title?: string;
+  tags?: string; // comma-separated
+  isCloaked?: boolean;
+  enableDeepLinking?: boolean;
+  deepLinkIOS?: string;
+  deepLinkAndroid?: string;
+  enableRetargeting?: boolean;
+  retargetingPixelId?: string;
+}
 
-  // Check for slug collision if customAlias is provided
-  if (linkData.customAlias && linksDB.some(l => l.slug === linkData.customAlias)) {
-    // In a real app, you'd throw an error or handle this more gracefully
-    // For mock purposes, we can append a random suffix or just let it be (user will see duplicate slugs)
-    // For now, let's assume the form validation or user is aware.
-    console.warn(`Custom alias ${linkData.customAlias} already exists. Proceeding, but this might cause issues.`);
+export const addMockLink = (params: AddMockLinkParams): LinkItem => {
+  const slug = params.customAlias || generateSlug();
+
+  if (params.customAlias && linksDB.some(l => l.slug === params.customAlias)) {
+    // This case should ideally be prevented by form validation or handled by appending to slug.
+    // For mock, we'll proceed, potentially creating a duplicate slug if not handled by caller.
+    console.warn(`Custom alias ${params.customAlias} may already exist or lead to conflicts if multiple links are created with the same alias.`);
   }
   
   const newLink: LinkItem = {
-    id: Date.now().toString() + Math.random().toString(16).substring(2), // More robust mock ID
-    originalUrl: linkData.originalUrl,
-    targets: [{ url: linkData.originalUrl }], // Simplified: one target
-    shortUrl: `https://lnk.wiz/${slug}`, // Assuming a default domain
+    id: generateMockId(),
+    originalUrl: params.destinationUrls[0], // Primary URL for display
+    shortUrl: `https://lnk.wiz/${slug}`,
     slug: slug,
     clickCount: 0,
     createdAt: new Date().toISOString(),
-    title: linkData.title,
-    isCloaked: linkData.enableCloaking,
-    tags: linkData.tags ? linkData.tags.split(',').map(t => t.trim()).filter(Boolean) : [],
-    deepLinkConfig: linkData.enableDeepLinking 
-      ? { ios: linkData.deepLinkIOS || '', android: linkData.deepLinkAndroid || '' } 
+    title: params.title,
+    tags: params.tags ? params.tags.split(',').map(t => t.trim()).filter(Boolean) : undefined,
+    isCloaked: params.isCloaked,
+    targets: [], // Will be populated below
+    deepLinkConfig: params.enableDeepLinking && (params.deepLinkIOS || params.deepLinkAndroid)
+      ? { ios: params.deepLinkIOS || '', android: params.deepLinkAndroid || '' }
       : undefined,
-    abTestConfig: linkData.enableABTesting 
-      ? { variantA: linkData.originalUrl, variantB: linkData.abTestVariantBUrl || '', split: 50 } // Simplified A/B
-      : undefined,
-    retargetingPixels: linkData.enableRetargeting && linkData.retargetingPixelId 
-      ? [{ platform: 'custom', pixelId: linkData.retargetingPixelId }] // Simplified
+    abTestConfig: undefined, // Will be populated if isABTest is true
+    retargetingPixels: params.enableRetargeting && params.retargetingPixelId
+      ? [{ platform: 'custom', pixelId: params.retargetingPixelId }]
       : undefined,
   };
-  linksDB.unshift(newLink); // Add to the beginning to show up as recent
+
+  if (params.isABTest && params.destinationUrls.length >= 2) {
+    newLink.targets = [
+      { url: params.destinationUrls[0], weight: 50 },
+      { url: params.destinationUrls[1], weight: 50 },
+    ];
+    newLink.abTestConfig = { variantA: params.destinationUrls[0], variantB: params.destinationUrls[1], split: 50 };
+  } else if (params.isRotation && params.destinationUrls.length > 0) {
+    const numUrls = params.destinationUrls.length;
+    let baseWeight = Math.floor(100 / numUrls);
+    let remainder = 100 % numUrls;
+    newLink.targets = params.destinationUrls.map((url, index) => {
+      let weight = baseWeight + (index < remainder ? 1 : 0);
+      return { url, weight };
+    });
+  } else {
+    // Single destination URL
+    newLink.targets = [{ url: params.destinationUrls[0] }];
+  }
+  
+  linksDB.unshift(newLink);
   return JSON.parse(JSON.stringify(newLink));
 };
+
 
 export const deleteMockLink = (linkId: string): boolean => {
   const initialLength = linksDB.length;
@@ -168,23 +211,31 @@ export const getMockTeamMembers = (): TeamMember[] => {
 export const getMockAnalyticsChartDataForLink = (linkId: string, days: number = 7): { date: string; clicks: number }[] => {
   const data: { date: string; clicks: number }[] = [];
   const link = linksDB.find(l => l.id === linkId);
-  const baseClicks = link ? Math.floor(link.clickCount / (days > 0 ? days : 1)) : 20;
+  
+  if (!link) return []; // If link not found, return empty data
+
+  const baseClicks = Math.floor((link.clickCount || 0) / (days > 0 ? Math.min(days, (link.clickCount || 1)) : 1));
+
 
   if (days <= 0) {
     return [];
   }
-  const numPoints = Math.max(1, Math.min(days, 30));
+  // Ensure numPoints is reasonable, especially if days is large. Max 30 points for chart.
+  const numPoints = Math.max(1, Math.min(days, 30)); 
 
   for (let i = 0; i < numPoints; i++) {
     const currentDate = new Date();
-    const dayOffset = Math.floor((days / numPoints) * i);
+    // Distribute points somewhat evenly over the 'days' period
+    const dayOffset = Math.floor((days / numPoints) * (numPoints - 1 - i));
     currentDate.setDate(currentDate.getDate() - dayOffset);
     
     data.push({
       date: currentDate.toISOString().split('T')[0],
-      clicks: Math.max(0, baseClicks + Math.floor(Math.random() * 20) - 10 + Math.floor(Math.random() * (parseInt(linkId, 10) % 5))),
+       // Make clicks vary a bit, ensure non-negative
+      clicks: Math.max(0, baseClicks + Math.floor(Math.random() * (baseClicks * 0.5)) - Math.floor(baseClicks * 0.25) + (i % 5 - 2)),
     });
   }
+  // Sort by date ascending for the chart
   return data.sort((a,b) => new Date(a.date).getTime() - new Date(b.date).getTime()); 
 };
 
@@ -197,3 +248,4 @@ export const mockTeamMembers = teamMembersDB;
 // Keep the old function name for compatibility if some components still use it, 
 // but it now calls the new chart data function.
 export const getMockAnalyticsForLink = getMockAnalyticsChartDataForLink;
+
