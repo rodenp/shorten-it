@@ -1,7 +1,7 @@
 'use client';
 
 import type { LinkItem } from '@/types';
-import { Button } from '@/components/ui/button';
+import { Button, buttonVariants } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import {
   DropdownMenu,
@@ -27,6 +27,7 @@ import { useToast } from '@/hooks/use-toast';
 import Link from 'next/link';
 import { formatDistanceToNow } from 'date-fns';
 import React from 'react';
+import { cn } from '@/lib/utils';
 
 
 interface LinkCardProps {
@@ -77,16 +78,21 @@ export function LinkCard({ link, onDelete }: LinkCardProps) {
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end">
               <DropdownMenuItem onClick={() => handleCopy(link.shortUrl)}>
-                <Copy className="mr-2 h-4 w-4" /> Copy Short URL
+                <div className="flex items-center">
+                  <Copy className="mr-2 h-4 w-4" />
+                  <span>Copy Short URL</span>
+                </div>
               </DropdownMenuItem>
-              <DropdownMenuItem asChild disabled> {/* Edit functionality not yet implemented */}
-                <Link href={`/links/${link.slug}/edit`}>
-                  <Edit className="mr-2 h-4 w-4" /> Edit Link
+              <DropdownMenuItem asChild disabled>
+                <Link href={`/links/${link.slug}/edit`} className="flex items-center gap-2">
+                  <Edit className="mr-2 h-4 w-4" />
+                  <span>Edit Link</span>
                 </Link>
               </DropdownMenuItem>
               <DropdownMenuItem asChild>
-                <Link href={`/analytics/${link.slug || link.id}`}>
-                  <BarChartHorizontalBig className="mr-2 h-4 w-4" /> View Analytics
+                <Link href={`/analytics/${link.slug || link.id}`} className="flex items-center gap-2">
+                  <BarChartHorizontalBig className="mr-2 h-4 w-4" />
+                  <span>View Analytics</span>
                 </Link>
               </DropdownMenuItem>
               {onDelete && (
@@ -94,15 +100,24 @@ export function LinkCard({ link, onDelete }: LinkCardProps) {
                   <DropdownMenuSeparator />
                   <AlertDialog>
                     <AlertDialogTrigger asChild>
-                      <DropdownMenuItem
-                        className="text-destructive focus:text-destructive-foreground focus:bg-destructive"
-                        onSelect={(e) => e.preventDefault()} // Prevents DropdownMenu from closing
+                       {/* Replaced DropdownMenuItem with a styled button */}
+                      <button
+                        type="button"
+                        className={cn(
+                          // Base styles from DropdownMenuItem
+                          "relative flex w-full cursor-default select-none items-center gap-2 rounded-sm px-2 py-1.5 text-sm outline-none transition-colors data-[disabled]:pointer-events-none data-[disabled]:opacity-50",
+                          // Destructive styles
+                          "text-destructive focus:bg-destructive focus:text-destructive-foreground hover:bg-destructive hover:text-destructive-foreground",
+                          // SVG icon specific styles (already part of base DropdownMenuItem but good to be explicit if needed)
+                          "[&_svg]:size-4 [&_svg]:shrink-0"
+                        )}
+                        // onClick will be handled by AlertDialogTrigger.
+                        // If DropdownMenu needs to be kept open, this might need more complex handling (e.g. global state or context for dialog)
+                        // For now, assume AlertDialogTrigger manages this. The original onSelect was to prevent menu closing.
                       >
-                        <div className="flex items-center"> {/* Wrapper for single child */}
-                          <Trash2 className="mr-2 h-4 w-4" />
-                          <span>Delete Link</span>
-                        </div>
-                      </DropdownMenuItem>
+                        <Trash2 className="mr-2 h-4 w-4" />
+                        <span>Delete Link</span>
+                      </button>
                     </AlertDialogTrigger>
                     <AlertDialogContent>
                       <AlertDialogHeader>
