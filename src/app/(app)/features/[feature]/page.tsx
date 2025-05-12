@@ -1,4 +1,3 @@
-
 'use client';
 
 import { useParams } from 'next/navigation';
@@ -22,6 +21,13 @@ const featureDetails: Record<string, {
     details: "Set up URL rotation to send users to different web pages based on predefined weights or sequentially. Ideal for testing different landing pages, distributing load, or running regional campaigns. You can configure weights for each target URL to control the traffic distribution.",
     imageHint: "arrows cycle",
   },
+  'ab-testing': { // Matched to the sidebar link href
+    title: "A/B Testing",
+    icon: FlaskConical,
+    description: "Test different destination URLs to see which performs better.",
+    details: "A/B testing allows you to split traffic between two different destination URLs (Variant A and Variant B) from a single short link. You can define the percentage of traffic to send to Variant A, with the remainder going to Variant B. This is useful for optimizing conversion rates by comparing the performance of different landing pages or offers.",
+    imageHint: "split comparison",
+  }
   // Add other features here as they are implemented
 };
 

@@ -1,4 +1,3 @@
-
 'use client';
 
 import type { LinkItem } from '@/types';
@@ -20,7 +19,7 @@ import {
   AlertDialogFooter,
   AlertDialogHeader,
   AlertDialogTitle,
-  AlertDialogTrigger, // Added AlertDialogTrigger
+  AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
 import { Badge } from '@/components/ui/badge';
 import { Copy, Edit, Trash2, BarChartHorizontalBig, MoreVertical, ExternalLink, Clock, ShieldCheck, MoveDiagonal, FlaskConical, Target, Shuffle } from 'lucide-react';
@@ -50,13 +49,13 @@ export function LinkCard({ link, onDelete }: LinkCardProps) {
 
   const getFeatureIcons = () => {
     const icons = [];
-    // Shuffle icon if more than one target AND no A/B test config (pure rotation)
-    if (link.targets && link.targets.length > 1 && !link.abTestConfig) {
-        icons.push({ icon: Shuffle, label: `URL Rotation (${link.targets.length})` });
-    }
     // FlaskConical icon if A/B test config is present
-    else if (link.abTestConfig) {
-        icons.push({ icon: FlaskConical, label: "A/B Testing" });
+    if (link.abTestConfig) {
+        icons.push({ icon: FlaskConical, label: `A/B Test (${link.abTestConfig.splitPercentage}%/${100-link.abTestConfig.splitPercentage}%)` });
+    }
+    // Shuffle icon if more than one target AND no A/B test config (pure rotation)
+    else if (link.targets && link.targets.length > 1) {
+        icons.push({ icon: Shuffle, label: `URL Rotation (${link.targets.length})` });
     }
 
     if (link.isCloaked) icons.push({ icon: ShieldCheck, label: "Link Cloaking" });
@@ -68,23 +67,23 @@ export function LinkCard({ link, onDelete }: LinkCardProps) {
   const featureIcons = getFeatureIcons();
 
   const originalUrlDisplay = () => {
-    if (link.targets && link.targets.length > 1 && !link.abTestConfig) {
+    if (link.abTestConfig) {
+      return `A/B Test: ${link.targets[0]?.url.replace(/^https?:\/\//, '')} vs ${link.targets[1]?.url.replace(/^https?:\/\//, '')}`;
+    }
+    if (link.targets && link.targets.length > 1) {
       return `Rotates between ${link.targets.length} URLs`;
     }
-    if (link.abTestConfig) {
-      return `A/B Test: ${link.targets[0]?.url} vs ${link.targets[1]?.url}`;
-    }
-    return link.targets[0]?.url || 'N/A';
+    return link.targets[0]?.url || link.originalUrl || 'N/A';
   };
 
   const originalUrlTitle = () => {
-    if (link.targets && link.targets.length > 1 && !link.abTestConfig) {
-      return link.targets.map(t => t.url).join(', ');
-    }
      if (link.abTestConfig) {
-      return `Variant A: ${link.targets[0]?.url}, Variant B: ${link.targets[1]?.url}`;
+      return `Variant A (${link.abTestConfig.splitPercentage}%): ${link.targets[0]?.url}\nVariant B (${100-link.abTestConfig.splitPercentage}%): ${link.targets[1]?.url}`;
     }
-    return link.targets[0]?.url || 'N/A';
+    if (link.targets && link.targets.length > 1) {
+      return link.targets.map(t => `${t.url} (${t.weight || (100/link.targets.length).toFixed(0)}%)`).join(', ');
+    }
+    return link.targets[0]?.url || link.originalUrl || 'N/A';
   };
 
 
@@ -126,11 +125,11 @@ export function LinkCard({ link, onDelete }: LinkCardProps) {
                   <DropdownMenuSeparator />
                    <AlertDialog>
                     <AlertDialogTrigger asChild>
+                       {/* This is a button that looks like a DropdownMenuItem */}
                       <button
                         type="button"
                         className={cn(
-                          buttonVariants({ variant: "ghost", size: "sm" }),
-                          "relative flex w-full cursor-default select-none items-center rounded-sm px-2 py-1.5 text-sm outline-none transition-colors data-[disabled]:pointer-events-none data-[disabled]:opacity-50",
+                          "relative flex w-full cursor-default select-none items-center gap-2 rounded-sm px-2 py-1.5 text-sm outline-none transition-colors data-[disabled]:pointer-events-none data-[disabled]:opacity-50",
                           "text-destructive focus:bg-destructive focus:text-destructive-foreground hover:bg-destructive hover:text-destructive-foreground justify-start",
                           "[&_svg]:size-4 [&_svg]:shrink-0 [&_svg]:mr-2"
                         )}

@@ -1,4 +1,3 @@
-
 'use client';
 
 import { zodResolver } from '@hookform/resolvers/zod';
@@ -21,24 +20,23 @@ import { useToast } from '@/hooks/use-toast';
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/components/ui/accordion';
 import { Switch } from '@/components/ui/switch';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Shuffle, ShieldCheck, MoveDiagonal, FlaskConical, Target, Tag, Settings2, Link as LinkIcon, Globe } from 'lucide-react';
+import { Shuffle, ShieldCheck, MoveDiagonal, FlaskConical, Target, Tag, Settings2, Link as LinkIcon, Globe, Percent } from 'lucide-react';
 import { addMockLink, getMockCustomDomains } from '@/lib/mock-data';
 import type { CustomDomain } from '@/types';
 import { useEffect, useState } from 'react';
+import { Slider } from '@/components/ui/slider';
 
 const getShortenerDomain = (): string => {
-  return process.env.NEXT_PUBLIC_LINK_SHORTENER_DOMAIN || 'lnk.wiz';
+  return process.env.NEXT_PUBLIC_SHORTENER_DOMAIN || 'lnk.wiz';
 };
 
 
 const urlInputFormSchema = z.object({
-  urls: z.string().min(1, { message: 'Please enter at least one URL.' })
+  urls: z.string().min(1, { message: 'Please enter at least one URL for Variant A or for rotation.' })
     .refine(value => {
       const lines = value.split('\n').map(line => line.trim()).filter(line => line.length > 0);
       return lines.every(line => {
         try {
-          // Check if it's a valid URL structure, but allow URLs without http/https for now.
-          // The backend or a more specific validation step can enforce protocol.
           new URL(line.startsWith('http') ? line : `http://${line}`);
           return true;
         } catch (_) {
@@ -51,7 +49,7 @@ const urlInputFormSchema = z.object({
   }),
   title: z.string().optional(),
   tags: z.string().optional(),
-  customDomain: z.string().optional(), // For selected custom domain
+  customDomain: z.string().optional(),
   enableRotation: z.boolean().default(false).optional(),
   enableCloaking: z.boolean().default(false).optional(),
   enableDeepLinking: z.boolean().default(false).optional(),
@@ -59,7 +57,7 @@ const urlInputFormSchema = z.object({
   deepLinkAndroid: z.string().optional(),
   enableABTesting: z.boolean().default(false).optional(),
   abTestVariantBUrl: z.string().optional().refine(value => {
-    if (!value) return true;
+    if (!value) return true; // Only required if A/B testing is enabled
     try {
       new URL(value.startsWith('http') ? value : `http://${value}`);
       return true;
@@ -67,6 +65,7 @@ const urlInputFormSchema = z.object({
       return false;
     }
   }, { message: 'Variant B URL is invalid. Please enter a valid URL.' }),
+  abTestSplitPercentage: z.number().min(0).max(100).default(50).optional(),
   enableRetargeting: z.boolean().default(false).optional(),
   retargetingPixelId: z.string().optional(),
 }).refine(data => {
@@ -84,15 +83,15 @@ const urlInputFormSchema = z.object({
     return true;
 }, {
     message: "At least one URI scheme (iOS or Android) is required for Deep Linking.",
-    path: ["deepLinkIOS"], // Or a more general path if applicable
+    path: ["deepLinkIOS"], 
 }).refine(data => {
-    // If multiple URLs are provided and NOT enabling rotation,
-    // and a custom alias is set, this is potentially ambiguous.
-    // The description says alias applies to the first.
-    // This refine is more for complex multi-url scenarios,
-    // if specific restrictions beyond "alias for first" were needed.
-    // For now, the described behavior is acceptable.
+    if (data.enableRotation && data.enableABTesting) {
+        return false;
+    }
     return true;
+}, {
+    message: "URL Rotation and A/B Testing cannot be enabled at the same time for a single link.",
+    path: ["enableABTesting"], // Or enableRotation, path for the second one typically shows error
 });
 
 
@@ -108,6 +107,7 @@ const defaultValues: Partial<UrlInputFormValues> = {
   deepLinkIOS: '',
   deepLinkAndroid: '',
   abTestVariantBUrl: '',
+  abTestSplitPercentage: 50,
   retargetingPixelId: '',
   customAlias: '',
   title: '',
@@ -151,7 +151,7 @@ export function UrlInputForm({ onLinkAdded }: UrlInputFormProps) {
     if (urlList.length === 0) {
       toast({
         title: 'No URLs Provided',
-        description: 'Please enter at least one URL to shorten.',
+        description: 'Please enter at least one URL for Variant A or for rotation.',
         variant: 'destructive',
       });
       return;
@@ -162,21 +162,33 @@ export function UrlInputForm({ onLinkAdded }: UrlInputFormProps) {
 
     const selectedCustomDomainName = data.customDomain === 'default' ? undefined : data.customDomain;
 
-    const commonPropsForAddMockLink = {
+    const commonPropsForAddMockLink: Omit<Parameters<typeof addMockLink>[0], 'destinationUrls' | 'isRotation' | 'isABTest' | 'variantBUrl' | 'abTestSplitPercentage'> = {
       title: data.title,
       tags: data.tags,
       isCloaked: data.enableCloaking,
-      deepLinkConfig: data.enableDeepLinking && (data.deepLinkIOS || data.deepLinkAndroid)
-        ? { ios: data.deepLinkIOS || '', android: data.deepLinkAndroid || '' }
-        : undefined,
-      retargetingPixels: data.enableRetargeting && data.retargetingPixelId
-        ? [{ platform: 'custom', pixelId: data.retargetingPixelId }] // Simplified structure
-        : undefined,
+      deepLinkIOS: data.deepLinkIOS,
+      deepLinkAndroid: data.deepLinkAndroid,
+      retargetingPixelId: data.enableRetargeting ? data.retargetingPixelId : undefined,
       customDomain: selectedCustomDomainName,
     };
 
     try {
-      if (data.enableRotation && urlList.length > 1) {
+      if (data.enableABTesting && urlList.length > 0 && data.abTestVariantBUrl) {
+         let variantB = data.abTestVariantBUrl.trim();
+         if (!variantB.startsWith('http://') && !variantB.startsWith('https://')) {
+            variantB = `https://${variantB}`;
+         }
+        addMockLink({
+          destinationUrls: [urlList[0]], // Variant A is the first URL from the main input
+          variantBUrl: variantB,
+          isABTest: true,
+          isRotation: false, // A/B test and rotation are mutually exclusive
+          customAlias: data.customAlias,
+          abTestSplitPercentage: data.abTestSplitPercentage,
+          ...commonPropsForAddMockLink,
+        });
+        createdCount = 1; // A/B test creates a single short link
+      } else if (data.enableRotation && urlList.length > 1) {
         // Single link with multiple targets for rotation
         addMockLink({
           destinationUrls: urlList,
@@ -187,27 +199,15 @@ export function UrlInputForm({ onLinkAdded }: UrlInputFormProps) {
         });
         createdCount = 1;
       } else {
-        // Multiple links OR a single link (potentially with A/B test)
+        // Multiple individual links OR a single link (not A/B, not rotation)
         urlList.forEach((url, index) => {
           const isFirstUrlInBatch = index === 0;
           const applyCustomAlias = isFirstUrlInBatch ? data.customAlias : undefined;
           
-          let currentDestinationUrls = [url];
-          let isABTestForThisLink = false;
-
-          if (isFirstUrlInBatch && data.enableABTesting && data.abTestVariantBUrl && !data.enableRotation) {
-            let variantB = data.abTestVariantBUrl.trim();
-            if (!variantB.startsWith('http://') && !variantB.startsWith('https://')) {
-                variantB = `https://${variantB}`;
-            }
-            currentDestinationUrls.push(variantB);
-            isABTestForThisLink = true;
-          }
-
           addMockLink({
-            destinationUrls: currentDestinationUrls,
-            isRotation: false, // Rotation handled above
-            isABTest: isABTestForThisLink,
+            destinationUrls: [url],
+            isRotation: false,
+            isABTest: false,
             customAlias: applyCustomAlias,
             ...commonPropsForAddMockLink,
           });
@@ -224,7 +224,7 @@ export function UrlInputForm({ onLinkAdded }: UrlInputFormProps) {
         description: `Successfully generated ${createdCount} short link${createdCount > 1 ? 's' : ''}.`,
         variant: 'default',
       });
-      form.reset();
+      form.reset(); // Reset form to default values
       onLinkAdded?.();
     } else if (errorMessages.length > 0) {
        toast({
@@ -232,7 +232,7 @@ export function UrlInputForm({ onLinkAdded }: UrlInputFormProps) {
         description: errorMessages.join(' '),
         variant: 'destructive',
       });
-    } else if (urlList.length > 0){ // Only show this if URLs were provided but nothing created
+    } else if (urlList.length > 0){
        toast({
         title: 'No Links Created',
         description: 'Could not create any links. Please check your input and try again.',
@@ -240,6 +240,9 @@ export function UrlInputForm({ onLinkAdded }: UrlInputFormProps) {
       });
     }
   }
+  
+  const enableRotation = form.watch('enableRotation');
+  const enableABTesting = form.watch('enableABTesting');
 
   return (
     <Card className="w-full shadow-lg">
@@ -258,16 +261,22 @@ export function UrlInputForm({ onLinkAdded }: UrlInputFormProps) {
               name="urls"
               render={({ field }) => (
                 <FormItem>
-                  <FormLabel>URLs (one per line, e.g., example.com or https://example.com)</FormLabel>
+                  <FormLabel>
+                    {enableABTesting ? 'Variant A URL (Primary)' : 'URLs (one per line)'}
+                  </FormLabel>
                   <FormControl>
                     <Textarea
-                      placeholder="example.com/my-long-url-1&#10;https://another.com/my-long-url-2"
+                      placeholder={enableABTesting ? "example.com/variant-a" : "example.com/my-long-url-1\nhttps://another.com/my-long-url-2"}
                       className="min-h-[100px] resize-y"
                       {...field}
+                      rows={enableABTesting ? 1 : undefined} 
                     />
                   </FormControl>
                   <FormDescription>
-                    Enter one or more URLs. If multiple URLs are provided and URL Rotation is not enabled, a separate short link will be created for each. URLs without http(s) will default to https.
+                    {enableABTesting 
+                      ? "Enter the primary URL for your A/B test (Variant A)."
+                      : "Enter one or more URLs. If multiple URLs are provided and URL Rotation is not enabled, a separate short link will be created for each. URLs without http(s) will default to https."
+                    }
                   </FormDescription>
                   <FormMessage />
                 </FormItem>
@@ -289,7 +298,7 @@ export function UrlInputForm({ onLinkAdded }: UrlInputFormProps) {
                         <FormControl>
                           <Input placeholder="my-cool-link" {...field} />
                         </FormControl>
-                         <FormDescription>If creating multiple links (not rotating), alias applies to the first URL only. Ignored if blank. Must be unique for the chosen domain.</FormDescription>
+                         <FormDescription>If creating multiple links (not rotating/A/B testing), alias applies to the first URL only. Ignored if blank. Must be unique for the chosen domain.</FormDescription>
                         <FormMessage />
                       </FormItem>
                     )}
@@ -364,7 +373,7 @@ export function UrlInputForm({ onLinkAdded }: UrlInputFormProps) {
                         <div className="space-y-0.5">
                           <FormLabel className="flex items-center"><Shuffle className="mr-2 h-4 w-4" />URL Rotation</FormLabel>
                           <FormDescription>
-                            Rotate between the URLs provided in the main input (if multiple).
+                            Rotate between multiple URLs provided in the main input. (Disables A/B Testing)
                           </FormDescription>
                         </div>
                         <FormControl>
@@ -376,8 +385,79 @@ export function UrlInputForm({ onLinkAdded }: UrlInputFormProps) {
                                     form.setValue('enableABTesting', false);
                                 }
                             }}
+                            disabled={enableABTesting}
                           />
                         </FormControl>
+                      </FormItem>
+                    )}
+                  />
+                  <FormField
+                    control={form.control}
+                    name="enableABTesting"
+                    render={({ field }) => (
+                      <FormItem className="rounded-lg border p-3 shadow-sm">
+                        <div className="flex flex-row items-center justify-between">
+                            <div className="space-y-0.5">
+                            <FormLabel className="flex items-center"><FlaskConical className="mr-2 h-4 w-4" />A/B Testing</FormLabel>
+                            <FormDescription>
+                                Split traffic between Variant A (from main input) and Variant B. (Disables URL Rotation)
+                            </FormDescription>
+                            </div>
+                            <FormControl>
+                            <Switch
+                                checked={field.value}
+                                onCheckedChange={(checked) => {
+                                    field.onChange(checked);
+                                    if (checked && form.getValues('enableRotation')) {
+                                        form.setValue('enableRotation', false);
+                                    }
+                                }}
+                                disabled={enableRotation || form.getValues('urls').split('\n').filter(Boolean).length > 1 && !field.value}
+                            />
+                            </FormControl>
+                        </div>
+                        {form.watch('enableABTesting') && !form.watch('enableRotation') && (
+                            <div className="mt-4 space-y-4">
+                                <FormField
+                                control={form.control}
+                                name="abTestVariantBUrl"
+                                render={({ field: variantBField }) => (
+                                    <FormItem>
+                                    <FormLabel>Variant B URL</FormLabel>
+                                    <FormControl><Input placeholder="example.com/variant-b" {...variantBField} /></FormControl>
+                                    <FormDescription>Enter the URL for Variant B. URLs without http(s) default to https.</FormDescription>
+                                    <FormMessage />
+                                    </FormItem>
+                                )}
+                                />
+                                <FormField
+                                control={form.control}
+                                name="abTestSplitPercentage"
+                                render={({ field }) => (
+                                    <FormItem>
+                                    <FormLabel className="flex items-center">
+                                        <Percent className="mr-2 h-4 w-4" />
+                                        Traffic Split for Variant A ({field.value || 50}%)
+                                    </FormLabel>
+                                    <div className="flex items-center gap-2">
+                                        <Slider
+                                            defaultValue={[50]}
+                                            max={100}
+                                            step={1}
+                                            className="w-[calc(100%-4rem)]"
+                                            onValueChange={(value) => field.onChange(value[0])}
+                                            value={[field.value || 50]}
+                                        />
+                                        <span className="w-12 text-right">({100-(field.value || 50)}% to B)</span>
+                                    </div>
+                                    <FormDescription>Adjust the traffic percentage for Variant A. The remainder goes to Variant B.</FormDescription>
+                                    <FormMessage />
+                                    </FormItem>
+                                )}
+                                />
+                            </div>
+                        )}
+                         {form.formState.errors.enableABTesting && <FormMessage>{form.formState.errors.enableABTesting.message}</FormMessage>}
                       </FormItem>
                     )}
                   />
@@ -444,50 +524,6 @@ export function UrlInputForm({ onLinkAdded }: UrlInputFormProps) {
                             />
                              <FormMessage>{form.formState.errors.deepLinkIOS?.message || form.formState.errors.root?.message}</FormMessage>
                           </div>
-                        )}
-                      </FormItem>
-                    )}
-                  />
-                  <FormField
-                    control={form.control}
-                    name="enableABTesting"
-                    render={({ field }) => (
-                      <FormItem className="rounded-lg border p-3 shadow-sm">
-                        <div className="flex flex-row items-center justify-between">
-                            <div className="space-y-0.5">
-                            <FormLabel className="flex items-center"><FlaskConical className="mr-2 h-4 w-4" />A/B Testing</FormLabel>
-                            <FormDescription>
-                                Split traffic between primary URL and Variant B. (URL Rotation must be off).
-                            </FormDescription>
-                            </div>
-                            <FormControl>
-                            <Switch
-                                checked={field.value}
-                                onCheckedChange={(checked) => {
-                                    field.onChange(checked);
-                                    if (checked && form.getValues('enableRotation')) {
-                                        form.setValue('enableRotation', false);
-                                    }
-                                }}
-                                disabled={form.watch('enableRotation')}
-                            />
-                            </FormControl>
-                        </div>
-                        {form.watch('enableABTesting') && !form.watch('enableRotation') && (
-                            <>
-                            <FormField
-                            control={form.control}
-                            name="abTestVariantBUrl"
-                            render={({ field: variantBField }) => (
-                                <FormItem className="mt-4">
-                                <FormLabel>Variant B URL</FormLabel>
-                                <FormControl><Input placeholder="example.com/variant-b" {...variantBField} /></FormControl>
-                                 <FormDescription>If multiple URLs in main input, A/B test applies to the first URL against this Variant B. URLs without http(s) default to https.</FormDescription>
-                                 <FormMessage />
-                                </FormItem>
-                            )}
-                            />
-                            </>
                         )}
                       </FormItem>
                     )}

@@ -2,21 +2,16 @@
 import type { LinkItem, AnalyticEvent, CustomDomain, TeamMember, LinkTarget } from '@/types';
 
 const getShortenerDomain = (): string => {
-  // In a Next.js app, environment variables prefixed with NEXT_PUBLIC_ are exposed to the browser.
-  // They are replaced at build time.
-  // Fallback if NEXT_PUBLIC_SHORTENER_DOMAIN is not set.
   return process.env.NEXT_PUBLIC_SHORTENER_DOMAIN || 'lnk.wiz';
 };
-
-const defaultShortenerDomain = getShortenerDomain();
 
 
 let linksDB: LinkItem[] = [
   {
     id: '1',
     originalUrl: 'https://example.com/very-long-url-that-needs-shortening',
-    targets: [{ url: 'https://example.com/very-long-url-that-needs-shortening' }],
-    shortUrl: `https://brand.co/abc12`, // This link uses its specific customDomain
+    targets: [{ url: 'https://example.com/very-long-url-that-needs-shortening', weight: 100 }],
+    shortUrl: `https://brand.co/abc12`, 
     slug: 'abc12',
     clickCount: 1256,
     createdAt: new Date(Date.now() - 1 * 24 * 60 * 60 * 1000).toISOString(),
@@ -28,8 +23,8 @@ let linksDB: LinkItem[] = [
   {
     id: '2',
     originalUrl: 'https://another-example.io/another-long-feature-page',
-    targets: [{ url: 'https://another-example.io/another-long-feature-page' }],
-    shortUrl: `https://${defaultShortenerDomain}/def34`, // Uses default domain from .env
+    targets: [{ url: 'https://another-example.io/another-long-feature-page', weight: 100 }],
+    shortUrl: `https://${getShortenerDomain()}/def34`, 
     slug: 'def34',
     clickCount: 872,
     createdAt: new Date(Date.now() - 3 * 24 * 60 * 60 * 1000).toISOString(),
@@ -37,40 +32,40 @@ let linksDB: LinkItem[] = [
     isCloaked: true,
     deepLinkConfig: { ios: 'myapp://product/123', android: 'myapp://product/123' },
     tags: ['product', 'mobile'],
-    // customDomain is undefined, so defaultShortenerDomain is used
   },
    {
     id: '3',
-    originalUrl: 'https://yet-another-site.org/blog/exciting-article-post', // This effectively becomes variantA
+    originalUrl: 'https://yet-another-site.org/blog/article-variant-a', // Variant A
     targets: [
       { url: 'https://yet-another-site.org/blog/article-variant-a', weight: 50 },
-      { url: 'https://yet-another-site.org/blog/article-variant-b', weight: 50 }
+      { url: 'https://some-other-site.net/blog/article-variant-b', weight: 50 } // Variant B
     ],
-    shortUrl: `https://${defaultShortenerDomain}/ghi56`, // Uses default domain from .env
+    shortUrl: `https://${getShortenerDomain()}/ghi56`,
     slug: 'ghi56',
     clickCount: 3045,
     createdAt: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString(),
     title: 'Blog Post A/B Test',
-    abTestConfig: { variantA: 'https://yet-another-site.org/blog/article-variant-a', variantB: 'https://yet-another-site.org/blog/article-variant-b', split: 50 },
+    abTestConfig: { 
+        variantAUrl: 'https://yet-another-site.org/blog/article-variant-a', 
+        variantBUrl: 'https://some-other-site.net/blog/article-variant-b', 
+        splitPercentage: 50 
+    },
     tags: ['blog', 'ab-test'],
-    // customDomain is undefined
   },
   {
     id: '4',
-    originalUrl: 'https://company.com/product-a', // This will be one of the rotation targets
+    originalUrl: 'https://company.com/product-a', 
     targets: [
         { url: 'https://company.com/product-a', weight: 34 },
         { url: 'https://company.com/product-b', weight: 33 },
         { url: 'https://company.com/product-c', weight: 33 },
     ],
-    shortUrl: `https://${defaultShortenerDomain}/jkl78`, // Uses default domain from .env
+    shortUrl: `https://${getShortenerDomain()}/jkl78`,
     slug: 'jkl78',
     clickCount: 550,
     createdAt: new Date(Date.now() - 2 * 24 * 60 * 60 * 1000).toISOString(),
     title: 'Product Page Rotation',
     tags: ['ecommerce', 'rotation'],
-    // customDomain is undefined
-    // No abTestConfig for pure rotation
   },
 ];
 
@@ -130,10 +125,9 @@ const generateMockId = () => {
 
 // --- Link Functions ---
 export const getMockLinks = (): LinkItem[] => {
-  const currentGlobalDomain = getShortenerDomain(); // Get current env setting
+  const currentGlobalDomain = getShortenerDomain();
   return JSON.parse(JSON.stringify(linksDB.map(link => ({
     ...link,
-    // Dynamically construct shortUrl based on link's customDomain or the global default
     shortUrl: `https://${link.customDomain || currentGlobalDomain}/${link.slug}`
   }))));
 };
@@ -156,7 +150,8 @@ const generateSlug = (domain?: string) => {
 }
 
 interface AddMockLinkParams {
-  destinationUrls: string[];
+  destinationUrls: string[]; // Primary URL or list for rotation. Variant A for A/B.
+  variantBUrl?: string; // Variant B for A/B testing.
   isRotation?: boolean;
   isABTest?: boolean;
   customAlias?: string;
@@ -167,6 +162,7 @@ interface AddMockLinkParams {
   deepLinkAndroid?: string;
   retargetingPixelId?: string;
   customDomain?: string;
+  abTestSplitPercentage?: number; // Defaults to 50 if A/B test is enabled.
 }
 
 export const addMockLink = (params: AddMockLinkParams): LinkItem => {
@@ -176,11 +172,13 @@ export const addMockLink = (params: AddMockLinkParams): LinkItem => {
   if (params.customAlias && linksDB.some(l => l.slug === params.customAlias && (l.customDomain || getShortenerDomain()) === effectiveDomain)) {
     throw new Error(`Custom alias "${params.customAlias}" on domain "${effectiveDomain}" already exists.`);
   }
+  
+  const primaryUrl = params.destinationUrls[0];
 
   const newLink: LinkItem = {
     id: generateMockId(),
-    originalUrl: params.destinationUrls[0],
-    shortUrl: `https://${effectiveDomain}/${slug}`, // Store with the domain used at creation
+    originalUrl: primaryUrl, 
+    shortUrl: `https://${effectiveDomain}/${slug}`,
     slug: slug,
     clickCount: 0,
     createdAt: new Date().toISOString(),
@@ -195,10 +193,20 @@ export const addMockLink = (params: AddMockLinkParams): LinkItem => {
     retargetingPixels: params.retargetingPixelId
       ? [{ platform: 'custom', pixelId: params.retargetingPixelId }]
       : undefined,
-    customDomain: params.customDomain, // Store the custom domain if one was explicitly used
+    customDomain: params.customDomain,
   };
 
-  if (params.isRotation && params.destinationUrls.length > 0) {
+  if (params.isABTest && params.variantBUrl && params.destinationUrls.length > 0) {
+    const variantA = primaryUrl;
+    const variantB = params.variantBUrl;
+    const split = params.abTestSplitPercentage || 50;
+    newLink.targets = [
+      { url: variantA, weight: split },
+      { url: variantB, weight: 100 - split },
+    ];
+    newLink.abTestConfig = { variantAUrl: variantA, variantBUrl: variantB, splitPercentage: split };
+    newLink.originalUrl = variantA; // originalUrl becomes variant A
+  } else if (params.isRotation && params.destinationUrls.length > 0) {
     const numUrls = params.destinationUrls.length;
     let baseWeight = Math.floor(100 / numUrls);
     let remainder = 100 % numUrls;
@@ -206,20 +214,13 @@ export const addMockLink = (params: AddMockLinkParams): LinkItem => {
       let weight = baseWeight + (index < remainder ? 1 : 0);
       return { url, weight };
     });
-    newLink.abTestConfig = undefined;
-  } else if (params.isABTest && params.destinationUrls.length >= 2) {
-    newLink.targets = [
-      { url: params.destinationUrls[0], weight: 50 },
-      { url: params.destinationUrls[1], weight: 50 },
-    ];
-    newLink.abTestConfig = { variantA: params.destinationUrls[0], variantB: params.destinationUrls[1], split: 50 };
+    newLink.originalUrl = params.destinationUrls[0]; // First URL in rotation list as primary
   } else {
-    newLink.targets = [{ url: params.destinationUrls[0] }];
+    // Single destination URL
+    newLink.targets = [{ url: primaryUrl, weight: 100 }];
   }
 
   linksDB.unshift(newLink);
-  // Return a copy, ensuring the shortUrl reflects the domain used at creation.
-  // getMockLinks will re-evaluate if the global default changes and no custom domain is set.
   return JSON.parse(JSON.stringify(newLink));
 };
 
@@ -235,7 +236,6 @@ export const getMockLinkBySlugOrId = (slugOrId: string): LinkItem | undefined =>
   const currentGlobalDomain = getShortenerDomain();
   const link = linksDB.find(l => l.slug === slugOrId || l.id === slugOrId);
   if (link) {
-    // Return a copy, constructing the shortUrl dynamically based on its customDomain or current global default
     return JSON.parse(JSON.stringify({
       ...link,
       shortUrl: `https://${link.customDomain || currentGlobalDomain}/${link.slug}`

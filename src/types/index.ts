@@ -1,12 +1,12 @@
 export interface LinkTarget {
   url: string;
-  weight?: number; // For URL rotation
+  weight?: number; // For URL rotation or A/B testing split
 }
 
 export interface LinkItem {
   id: string;
-  originalUrl: string; // Or multiple for rotation
-  targets: LinkTarget[];
+  originalUrl: string; // Represents the primary destination or Variant A in an A/B test.
+  targets: LinkTarget[]; // Holds all destination URLs, including variants for A/B testing or rotation.
   shortUrl: string;
   slug: string;
   clickCount: number;
@@ -14,7 +14,9 @@ export interface LinkItem {
   customDomain?: string;
   isCloaked?: boolean;
   deepLinkConfig?: Record<string, string>; // e.g., { ios: "yourapp://path", android: "yourapp://path" }
-  abTestConfig?: { variantA: string; variantB: string; split: number };
+  // abTestConfig defines if A/B testing is active. Targets[0] is variantA, Targets[1] is variantB.
+  // Weight in targets can define the split, e.g. 50/50.
+  abTestConfig?: { variantAUrl: string; variantBUrl: string; splitPercentage: number };
   retargetingPixels?: { platform: string; pixelId: string }[];
   tags?: string[];
   title?: string;
