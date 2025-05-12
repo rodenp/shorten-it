@@ -94,11 +94,14 @@ export function LinkCard({ link, onDelete }: LinkCardProps) {
                   <DropdownMenuSeparator />
                   <AlertDialog>
                     <AlertDialogTrigger asChild>
-                      <DropdownMenuItem 
+                      <DropdownMenuItem
                         className="text-destructive focus:text-destructive-foreground focus:bg-destructive"
                         onSelect={(e) => e.preventDefault()} // Prevents DropdownMenu from closing
                       >
-                        <Trash2 className="mr-2 h-4 w-4" /> Delete Link
+                        <div className="flex items-center"> {/* Wrapper for single child */}
+                          <Trash2 className="mr-2 h-4 w-4" />
+                          <span>Delete Link</span>
+                        </div>
                       </DropdownMenuItem>
                     </AlertDialogTrigger>
                     <AlertDialogContent>
@@ -137,7 +140,7 @@ export function LinkCard({ link, onDelete }: LinkCardProps) {
             {formatDistanceToNow(new Date(link.createdAt), { addSuffix: true })}
           </div>
         </div>
-        
+
         {(featureIcons.length > 0 || (link.tags && link.tags.length > 0)) && (
           <div className="space-y-2">
             {featureIcons.length > 0 && (
