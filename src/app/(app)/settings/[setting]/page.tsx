@@ -1,3 +1,4 @@
+
 'use client';
 
 import { useParams } from 'next/navigation';
@@ -5,19 +6,61 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Button } from '@/components/ui/button';
 import Link from 'next/link';
 import { ArrowLeft, Settings, Info } from 'lucide-react';
-
-// This component can be dynamically rendered by reusing parts of the main settings page,
-// or have specific content for each setting. For this example, it's a generic placeholder.
+import { CustomDomainsSettings } from '@/components/settings/custom-domains-settings';
+// Import other specific settings components here as they are created
+// import { ProfileSettings } from '@/components/settings/profile-settings'; 
+// etc.
 
 export default function SpecificSettingPage() {
   const params = useParams();
   const settingName = params.setting as string;
 
   const displaySettingName = settingName
-    .replace(/([A-Z])/g, ' $1') // Add space before capital letters for camelCase
-    .split('-') // Split by hyphen for kebab-case
+    .replace(/([A-Z0-9])/g, ' $1') 
+    .split(/[-_ ]/) 
     .map(word => word.charAt(0).toUpperCase() + word.slice(1))
     .join(' ');
+
+  const renderSettingComponent = () => {
+    switch (settingName) {
+      case 'domains':
+        return <CustomDomainsSettings />;
+      // case 'profile':
+      //   return <ProfileSettings />; 
+      // case 'team':
+      //   return <TeamCollaborationSettings />;
+      // case 'retargeting':
+      //   return <RetargetingSettings />;
+      // case 'apikeys':
+      //   return <ApiKeysSettings />;
+      // case 'appearance':
+      //   return <AppearanceSettings />;
+      default:
+        return (
+          <Card className="w-full shadow-lg">
+            <CardHeader>
+              <CardTitle className="flex items-center text-2xl">
+                <Settings className="mr-2 h-6 w-6 text-primary" />
+                {displaySettingName} Settings
+              </CardTitle>
+              <CardDescription>
+                This page is a placeholder for managing "{displaySettingName}" settings.
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="flex flex-col items-center justify-center text-center p-8 border-2 border-dashed rounded-lg">
+                <Info className="h-16 w-16 text-muted-foreground mb-4" />
+                <h3 className="text-xl font-semibold mb-2">Settings Section Under Construction</h3>
+                <p className="text-muted-foreground max-w-md">
+                  The detailed configuration for "{displaySettingName}" would be available here.
+                  For now, this specific setting might be managed on the main <Link href="/settings" className="text-primary hover:underline">Settings page</Link> or is under development.
+                </p>
+              </div>
+            </CardContent>
+          </Card>
+        );
+    }
+  };
 
   return (
     <div className="container mx-auto py-2">
@@ -27,27 +70,7 @@ export default function SpecificSettingPage() {
           Back to All Settings
         </Link>
       </Button>
-      <Card className="w-full shadow-lg">
-        <CardHeader>
-          <CardTitle className="flex items-center text-2xl">
-            <Settings className="mr-2 h-6 w-6 text-primary" />
-            {displaySettingName} Settings
-          </CardTitle>
-          <CardDescription>
-            This page is a placeholder for managing "{displaySettingName}" settings.
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <div className="flex flex-col items-center justify-center text-center p-8 border-2 border-dashed rounded-lg">
-            <Info className="h-16 w-16 text-muted-foreground mb-4" />
-            <h3 className="text-xl font-semibold mb-2">Settings Section Under Construction</h3>
-            <p className="text-muted-foreground max-w-md">
-              The detailed configuration for "{displaySettingName}" would be available here.
-              For now, all settings are managed on the main <Link href="/settings" className="text-primary hover:underline">Settings page</Link> via tabs.
-            </p>
-          </div>
-        </CardContent>
-      </Card>
+      {renderSettingComponent()}
     </div>
   );
 }
