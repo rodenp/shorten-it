@@ -194,22 +194,3 @@ export default function AnalyticsPage() {
     </div>
   );
 }
-
-// Placeholder for individual link analytics page
-export function LinkSpecificAnalyticsPage({ params }: { params: { slug: string }}) {
-  const link = mockLinks.find(l => l.slug === params.slug || l.id === params.slug);
-  if (!link) return <div>Link not found</div>;
-  
-  const chartData = getMockAnalyticsForLink(link.id, 30);
-
-  return (
-     <div className="container mx-auto py-8">
-      <h1 className="text-3xl font-bold tracking-tight text-foreground mb-2">Analytics for: {link.title || link.shortUrl}</h1>
-      <a href={link.shortUrl} target="_blank" rel="noopener noreferrer" className="text-primary hover:underline">{link.shortUrl}</a>
-      <div className="mt-8">
-        <AnalyticsChart data={chartData} chartType="line" />
-      </div>
-      {/* Further breakdowns here */}
-    </div>
-  )
-}

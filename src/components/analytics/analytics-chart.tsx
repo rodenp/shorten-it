@@ -1,5 +1,6 @@
 'use client';
 
+import React from 'react';
 import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis, Line, LineChart, Legend } from 'recharts';
 import { ChartConfig, ChartContainer, ChartLegend, ChartLegendContent, ChartTooltip, ChartTooltipContent } from '@/components/ui/chart';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -18,12 +19,12 @@ const chartConfig = {
   },
 } satisfies ChartConfig;
 
-export function AnalyticsChart({ 
+const AnalyticsChartInternal = ({ 
     data, 
     chartType = 'bar', 
     title = "Link Performance", 
     description = "Clicks over the selected period." 
-}: AnalyticsChartProps) {
+}: AnalyticsChartProps) => {
   if (!data || data.length === 0) {
     return (
       <Card>
@@ -82,3 +83,5 @@ export function AnalyticsChart({
     </Card>
   );
 }
+
+export const AnalyticsChart = React.memo(AnalyticsChartInternal);
