@@ -1,12 +1,12 @@
+
 import type { LinkItem, AnalyticEvent, CustomDomain, TeamMember, LinkTarget } from '@/types';
 
 const getShortenerDomain = (): string => {
   // Ensure this runs only on the client or in a server environment where process.env is available
-  if (typeof process !== 'undefined' && process.env && process.env.NEXT_PUBLIC_LINK_SHORTENER_DOMAIN) {
-    return process.env.NEXT_PUBLIC_LINK_SHORTENER_DOMAIN;
+  if (typeof process !== 'undefined' && process.env && process.env.NEXT_PUBLIC_SHORTENER_DOMAIN) {
+    return process.env.NEXT_PUBLIC_SHORTENER_DOMAIN;
   }
-  // Fallback if NEXT_PUBLIC_LINK_SHORTENER_DOMAIN is not set or not in a Node.js environment
-  // This could also be an empty string or throw an error if the domain is critical
+  // Fallback if NEXT_PUBLIC_SHORTENER_DOMAIN is not set or not in a Node.js environment
   return 'lnk.wiz'; 
 };
 
@@ -16,7 +16,7 @@ let linksDB: LinkItem[] = [
     id: '1',
     originalUrl: 'https://example.com/very-long-url-that-needs-shortening',
     targets: [{ url: 'https://example.com/very-long-url-that-needs-shortening' }],
-    shortUrl: `https://brand.co/abc12`, // Updated to use custom domain
+    shortUrl: `https://brand.co/abc12`, 
     slug: 'abc12',
     clickCount: 1256,
     createdAt: new Date(Date.now() - 1 * 24 * 60 * 60 * 1000).toISOString(),
@@ -40,7 +40,7 @@ let linksDB: LinkItem[] = [
   },
    {
     id: '3',
-    originalUrl: 'https://yet-another-site.org/blog/exciting-article-post',
+    originalUrl: 'https://yet-another-site.org/blog/exciting-article-post', // This effectively becomes variantA
     targets: [
       { url: 'https://yet-another-site.org/blog/article-variant-a', weight: 50 },
       { url: 'https://yet-another-site.org/blog/article-variant-b', weight: 50 }
@@ -52,6 +52,22 @@ let linksDB: LinkItem[] = [
     title: 'Blog Post A/B Test',
     abTestConfig: { variantA: 'https://yet-another-site.org/blog/article-variant-a', variantB: 'https://yet-another-site.org/blog/article-variant-b', split: 50 },
     tags: ['blog', 'ab-test'],
+  },
+  {
+    id: '4',
+    originalUrl: 'https://company.com/product-a', // This will be one of the rotation targets
+    targets: [
+        { url: 'https://company.com/product-a', weight: 34 },
+        { url: 'https://company.com/product-b', weight: 33 },
+        { url: 'https://company.com/product-c', weight: 33 },
+    ],
+    shortUrl: `https://${getShortenerDomain()}/jkl78`,
+    slug: 'jkl78',
+    clickCount: 550,
+    createdAt: new Date(Date.now() - 2 * 24 * 60 * 60 * 1000).toISOString(),
+    title: 'Product Page Rotation',
+    tags: ['ecommerce', 'rotation'],
+    // No abTestConfig for pure rotation
   },
 ];
 
@@ -82,6 +98,15 @@ let analyticsEventsDB: AnalyticEvent[] = [
     deviceType: 'desktop',
     browser: 'Firefox',
     referrer: 'linkedin.com',
+  },
+   {
+    id: 'evt4',
+    linkId: '4',
+    timestamp: new Date(Date.now() - 5 * 60 * 60 * 1000).toISOString(),
+    country: 'Germany',
+    deviceType: 'mobile',
+    browser: 'Chrome',
+    referrer: 'facebook.com',
   },
 ];
 
@@ -119,7 +144,6 @@ export const getTotalClicks = (): number => {
 
 const generateSlug = (domain?: string) => {
   let slug = Math.random().toString(36).substring(2, 8);
-  // Ensure slug is unique for the given domain (or default domain if none provided)
   const targetDomain = domain || getShortenerDomain();
   while (linksDB.some(l => l.slug === slug && (l.customDomain || getShortenerDomain()) === targetDomain)) {
     slug = Math.random().toString(36).substring(2, 8);
@@ -135,10 +159,10 @@ interface AddMockLinkParams {
   title?: string;
   tags?: string; 
   isCloaked?: boolean;
-  enableDeepLinking?: boolean;
+  enableDeepLinking?: boolean; // This can be simplified, use deepLinkConfig directly
   deepLinkIOS?: string;
   deepLinkAndroid?: string;
-  enableRetargeting?: boolean;
+  enableRetargeting?: boolean; // This can be simplified
   retargetingPixelId?: string;
   customDomain?: string;
 }
@@ -148,7 +172,6 @@ export const addMockLink = (params: AddMockLinkParams): LinkItem => {
   const slug = params.customAlias || generateSlug(params.customDomain);
 
   if (params.customAlias && linksDB.some(l => l.slug === params.customAlias && (l.customDomain || getShortenerDomain()) === domain)) {
-    // This case should ideally be prevented by UI validation, but good to have a server-side-like check
     throw new Error(`Custom alias "${params.customAlias}" on domain "${domain}" already exists.`);
   }
   
@@ -163,23 +186,18 @@ export const addMockLink = (params: AddMockLinkParams): LinkItem => {
     tags: params.tags ? params.tags.split(',').map(t => t.trim()).filter(Boolean) : undefined,
     isCloaked: params.isCloaked,
     targets: [], 
-    deepLinkConfig: params.enableDeepLinking && (params.deepLinkIOS || params.deepLinkAndroid)
+    // Set abTestConfig to undefined initially, it will be populated only if isABTest is true and not rotation
+    abTestConfig: undefined, 
+    deepLinkConfig: (params.deepLinkIOS || params.deepLinkAndroid)
       ? { ios: params.deepLinkIOS || '', android: params.deepLinkAndroid || '' }
       : undefined,
-    abTestConfig: undefined, 
-    retargetingPixels: params.enableRetargeting && params.retargetingPixelId
-      ? [{ platform: 'custom', pixelId: params.retargetingPixelId }]
+    retargetingPixels: params.retargetingPixelId
+      ? [{ platform: 'custom', pixelId: params.retargetingPixelId }] // Simplified from enableRetargeting
       : undefined,
-    customDomain: params.customDomain, // Store the custom domain used
+    customDomain: params.customDomain,
   };
 
-  if (params.isABTest && params.destinationUrls.length >= 2) {
-    newLink.targets = [
-      { url: params.destinationUrls[0], weight: 50 },
-      { url: params.destinationUrls[1], weight: 50 },
-    ];
-    newLink.abTestConfig = { variantA: params.destinationUrls[0], variantB: params.destinationUrls[1], split: 50 };
-  } else if (params.isRotation && params.destinationUrls.length > 0) {
+  if (params.isRotation && params.destinationUrls.length > 0) { // Prioritize rotation if both flags somehow true
     const numUrls = params.destinationUrls.length;
     let baseWeight = Math.floor(100 / numUrls);
     let remainder = 100 % numUrls;
@@ -187,11 +205,19 @@ export const addMockLink = (params: AddMockLinkParams): LinkItem => {
       let weight = baseWeight + (index < remainder ? 1 : 0);
       return { url, weight };
     });
+    // Ensure abTestConfig is not set if it's a rotation link
+    newLink.abTestConfig = undefined; 
+  } else if (params.isABTest && params.destinationUrls.length >= 2) {
+    newLink.targets = [
+      { url: params.destinationUrls[0], weight: 50 },
+      { url: params.destinationUrls[1], weight: 50 },
+    ];
+    newLink.abTestConfig = { variantA: params.destinationUrls[0], variantB: params.destinationUrls[1], split: 50 };
   } else {
     newLink.targets = [{ url: params.destinationUrls[0] }];
   }
   
-  linksDB.unshift(newLink); // Add to the beginning to show most recent first
+  linksDB.unshift(newLink); 
   return JSON.parse(JSON.stringify(newLink));
 };
 
@@ -199,7 +225,6 @@ export const addMockLink = (params: AddMockLinkParams): LinkItem => {
 export const deleteMockLink = (linkId: string): boolean => {
   const initialLength = linksDB.length;
   linksDB = linksDB.filter(link => link.id !== linkId);
-  // Also delete related analytics events for cleanliness, though not strictly required by problem
   analyticsEventsDB = analyticsEventsDB.filter(event => event.linkId !== linkId);
   return linksDB.length < initialLength;
 };
@@ -240,7 +265,7 @@ export const addMockCustomDomain = (domainName: string): CustomDomain | { error:
   const newDomain: CustomDomain = {
     id: generateMockId(),
     domainName: domainName.trim(),
-    verified: false, // New domains start as unverified
+    verified: false, 
     createdAt: new Date().toISOString(),
   };
   customDomainsDB.push(newDomain);
@@ -270,7 +295,6 @@ export const updateMockCustomDomainName = (domainId: string, newName: string): C
   if (domainIndex === -1) {
     return { error: "Domain not found." };
   }
-  // Check if new name conflicts with another existing domain (excluding itself)
   if (customDomainsDB.some(d => d.domainName === newName.trim() && d.id !== domainId)) {
     return { error: "This domain name already exists." };
   }
