@@ -18,6 +18,7 @@ import {
   FormLabel,
   FormMessage,
 } from "@/components/ui/form";
+import React from "react";
 
 const profileFormSchema = z.object({
   fullName: z.string().min(2, { message: "Full name must be at least 2 characters." }).max(50, { message: "Full name must not exceed 50 characters."}),
@@ -26,7 +27,7 @@ const profileFormSchema = z.object({
     message: "Password must be at least 8 characters long if provided.",
   }),
   confirmPassword: z.string().optional(),
-  avatarUrl: z.string().optional(), // For storing avatar URL, actual upload not implemented
+  avatarUrl: z.string().optional(), // For storing avatar URL
 }).refine(data => data.newPassword === data.confirmPassword, {
   message: "Passwords don't match",
   path: ["confirmPassword"],
@@ -56,35 +57,39 @@ export function ProfileSettings() {
     mode: "onChange",
   });
 
-  // Placeholder for image upload state
-  // const [avatarPreview, setAvatarPreview] = useState<string | null>(currentUser.avatarUrl);
 
   const onSubmit = (data: ProfileFormValues) => {
     console.log("Profile update data:", data);
     // In a real app, you would send this data to your backend
+    // For this mock, we can update the currentUser object if needed, or just show a toast
+    currentUser.fullName = data.fullName;
+    currentUser.email = data.email;
+    if (data.avatarUrl && data.avatarUrl.startsWith('data:image')) {
+      // If a new avatar was uploaded (data URI), "save" it.
+      // In a real app, this would be an uploaded URL.
+      currentUser.avatarUrl = data.avatarUrl;
+    }
+    // Password change logic would go here too.
+
     toast({
       title: "Profile Updated",
       description: "Your profile information has been (mock) updated successfully.",
     });
   };
 
-  // Placeholder for avatar change handler
   const handleAvatarChange = (event: React.ChangeEvent<HTMLInputElement>) => {
-    // This would handle file selection and upload in a real app
-    // For now, it does nothing.
     if (event.target.files && event.target.files[0]) {
-      // const file = event.target.files[0];
-      // const reader = new FileReader();
-      // reader.onloadend = () => {
-      //   setAvatarPreview(reader.result as string);
-      //   form.setValue("avatarUrl", reader.result as string); // Or store the file object for upload
-      // };
-      // reader.readAsDataURL(file);
-      toast({
-        title: "Avatar Change (Mock)",
-        description: "Avatar upload functionality is not implemented in this demo.",
-        variant: "default",
-      })
+      const file = event.target.files[0];
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        // The result is a base64 data URI
+        form.setValue("avatarUrl", reader.result as string, { shouldValidate: true, shouldDirty: true });
+        toast({
+          title: "Avatar Preview Updated",
+          description: "The avatar preview has been updated. Click 'Update Profile' to save.",
+        });
+      };
+      reader.readAsDataURL(file);
     }
   };
 
@@ -104,7 +109,7 @@ export function ProfileSettings() {
               render={({ field }) => (
                 <FormItem className="flex items-center space-x-4">
                   <Avatar className="h-20 w-20">
-                    <AvatarImage src={field.value || `https://picsum.photos/seed/${currentUser.email}/100/100`} data-ai-hint="profile picture" alt={form.getValues("fullName")} />
+                    <AvatarImage src={field.value || `https://picsum.photos/seed/${form.getValues("email")}/100/100`} data-ai-hint="profile picture" alt={form.getValues("fullName")} />
                     <AvatarFallback>
                         {form.getValues("fullName")?.substring(0,2).toUpperCase() || "CU"}
                     </AvatarFallback>
@@ -117,10 +122,10 @@ export function ProfileSettings() {
                       id="avatar-upload" 
                       type="file" 
                       className="hidden" 
-                      accept="image/*" 
+                      accept="image/jpeg, image/png, image/gif" 
                       onChange={handleAvatarChange} 
                     />
-                    <p className="text-xs text-muted-foreground">JPG, GIF or PNG. 1MB max.</p>
+                    <p className="text-xs text-muted-foreground">JPG, PNG or GIF. 1MB max (mock).</p>
                   </div>
                 </FormItem>
               )}
@@ -181,7 +186,7 @@ export function ProfileSettings() {
                 )}
                 />
             </div>
-             <Button type="submit" disabled={form.formState.isSubmitting}>
+             <Button type="submit" disabled={form.formState.isSubmitting || !form.formState.isDirty}>
                 {form.formState.isSubmitting ? "Updating..." : "Update Profile"}
              </Button>
           </CardContent>
@@ -190,3 +195,4 @@ export function ProfileSettings() {
     </Card>
   );
 }
+
