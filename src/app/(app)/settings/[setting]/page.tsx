@@ -8,6 +8,7 @@ import Link from 'next/link';
 import { ArrowLeft, Settings, Info } from 'lucide-react';
 import { CustomDomainsSettings } from '@/components/settings/custom-domains-settings';
 import { ProfileSettings } from '@/components/settings/profile-settings'; 
+import { AppearanceSettings } from '@/components/settings/appearance-settings';
 // Import other specific settings components here as they are created
 // import { TeamCollaborationSettings } from '@/components/settings/team-collaboration-settings'; 
 // etc.
@@ -28,14 +29,14 @@ export default function SpecificSettingPage() {
         return <CustomDomainsSettings />;
       case 'profile':
         return <ProfileSettings />; 
+      case 'appearance':
+        return <AppearanceSettings />;
       // case 'team':
       //   return <TeamCollaborationSettings />;
       // case 'retargeting':
       //   return <RetargetingSettings />;
       // case 'apikeys':
       //   return <ApiKeysSettings />;
-      // case 'appearance':
-      //   return <AppearanceSettings />;
       default:
         return (
           <Card className="w-full shadow-lg">

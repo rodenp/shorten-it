@@ -18,6 +18,7 @@ import { Separator } from "@/components/ui/separator";
 import { Switch } from "@/components/ui/switch";
 import { CustomDomainsSettings } from "@/components/settings/custom-domains-settings";
 import { ProfileSettings } from "@/components/settings/profile-settings";
+import { AppearanceSettings } from "@/components/settings/appearance-settings";
 
 
 function TeamCollaborationSettings() {
@@ -143,45 +144,6 @@ function ApiKeysSettings() {
       </CardContent>
     </Card>
   );
-}
-
-function AppearanceSettings() {
-    return (
-        <Card>
-            <CardHeader>
-                <CardTitle>Appearance</CardTitle>
-                <CardDescription>Customize the look and feel of your LinkWiz dashboard.</CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-6">
-                <div className="flex items-center justify-between rounded-lg border p-4">
-                    <div>
-                        <Label htmlFor="theme-mode" className="text-base">Theme Mode</Label>
-                        <p className="text-sm text-muted-foreground">
-                            Select your preferred theme for the dashboard.
-                        </p>
-                    </div>
-                    <Tabs defaultValue="light" className="w-[200px]">
-                        <TabsList>
-                            <TabsTrigger value="light">Light</TabsTrigger>
-                            <TabsTrigger value="dark" disabled>Dark</TabsTrigger>
-                            <TabsTrigger value="system" disabled>System</TabsTrigger>
-                        </TabsList>
-                    </Tabs>
-                </div>
-                 <div className="flex items-center justify-between rounded-lg border p-4">
-                    <div>
-                        <Label htmlFor="compact-mode" className="text-base">Compact Mode</Label>
-                        <p className="text-sm text-muted-foreground">
-                            Reduce padding and margins for a more compact view.
-                        </p>
-                    </div>
-                    <Switch id="compact-mode" />
-                </div>
-
-                 <Button>Save Preferences</Button>
-            </CardContent>
-        </Card>
-    )
 }
 
 
