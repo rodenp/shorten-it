@@ -14,7 +14,8 @@ import { Separator } from "@/components/ui/separator";
 import { CustomDomainsSettings } from "@/components/settings/custom-domains-settings";
 import { ProfileSettings } from "@/components/settings/profile-settings";
 import { AppearanceSettings } from "@/components/settings/appearance-settings";
-import { ApiKeysSettings } from "@/components/settings/api-keys-settings"; // Import the new component
+import { ApiKeysSettings } from "@/components/settings/api-keys-settings";
+import { RetargetingSettings } from "@/components/settings/retargeting-settings";
 
 
 function TeamCollaborationSettings() {
@@ -64,57 +65,14 @@ function TeamCollaborationSettings() {
   );
 }
 
-function RetargetingSettings() {
-  return (
-    <Card>
-      <CardHeader>
-        <CardTitle>Retargeting Pixels</CardTitle>
-        <CardDescription>Manage your retargeting pixels for tracking campaigns.</CardDescription>
-      </CardHeader>
-      <CardContent className="space-y-6">
-        <div className="flex flex-col sm:flex-row gap-4 items-end">
-          <div className="flex-grow">
-            <Label htmlFor="pixel-name">Pixel Name</Label>
-            <Input id="pixel-name" placeholder="e.g., Main Facebook Pixel" />
-          </div>
-          <div className="flex-grow">
-            <Label htmlFor="pixel-id">Pixel ID</Label>
-            <Input id="pixel-id" placeholder="Enter Pixel ID" />
-          </div>
-           <div className="flex-grow">
-            <Label htmlFor="pixel-type">Pixel Type</Label>
-            <Input id="pixel-type" placeholder="e.g. Facebook Pixel"/>
-          </div>
-          <Button><PlusCircle className="mr-2 h-4 w-4" /> Add Pixel</Button>
-        </div>
-        <Separator />
-        <h3 className="text-lg font-medium">Your Pixels</h3>
-        <div className="p-3 border rounded-md">
-            <div className="flex justify-between items-center">
-                <div>
-                    <p className="font-medium">Primary FB Pixel</p>
-                    <p className="text-xs text-muted-foreground">ID: 1234567890 (Facebook Pixel)</p>
-                </div>
-                <div className="space-x-2">
-                    <Button variant="ghost" size="icon"><Edit className="h-4 w-4" /></Button>
-                    <Button variant="ghost" size="icon" className="text-destructive hover:text-destructive-foreground hover:bg-destructive"><Trash2 className="h-4 w-4" /></Button>
-                </div>
-            </div>
-        </div>
-         <p className="text-muted-foreground">No other retargeting pixels added yet.</p>
-      </CardContent>
-    </Card>
-  );
-}
-
 
 export default function SettingsPage() {
   const tabsConfig = [
     { value: "profile", label: "Profile", icon: UserCircle, component: <ProfileSettings /> },
     { value: "domains", label: "Custom Domains", icon: Globe, component: <CustomDomainsSettings /> },
     { value: "team", label: "Team Collaboration", icon: Users, component: <TeamCollaborationSettings /> },
-    { value: "retargeting", label: "Retargeting", icon: Target, component: <RetargetingSettings /> },
-    { value: "apikeys", label: "API Keys", icon: KeyRound, component: <ApiKeysSettings /> }, // Updated component
+    { value: "retargeting", label: "Retargeting", icon: Target, component: <RetargetingSettings /> }, 
+    { value: "apikeys", label: "API Keys", icon: KeyRound, component: <ApiKeysSettings /> },
     { value: "appearance", label: "Appearance", icon: Palette, component: <AppearanceSettings /> },
   ];
 
@@ -139,3 +97,4 @@ export default function SettingsPage() {
     </div>
   );
 }
+

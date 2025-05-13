@@ -22,8 +22,8 @@ import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/
 import { Switch } from '@/components/ui/switch';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Shuffle, ShieldCheck, MoveDiagonal, FlaskConical, Target, Tag, Settings2, Link as LinkIcon, Globe, Percent, FolderKanban } from 'lucide-react';
-import { addMockLink, getMockCustomDomains, getMockLinkGroups, getShortenerDomain } from '@/lib/mock-data';
-import type { CustomDomain, LinkGroup } from '@/types';
+import { addMockLink, getMockCustomDomains, getMockLinkGroups, getShortenerDomain, getMockRetargetingPixels } from '@/lib/mock-data';
+import type { CustomDomain, LinkGroup, RetargetingPixel } from '@/types';
 import { useEffect, useState } from 'react';
 import { Slider } from '@/components/ui/slider';
 
@@ -53,9 +53,10 @@ const urlInputFormSchema = z.object({
   enableDeepLinking: z.boolean().default(false).optional(),
   deepLinkIOS: z.string().optional(),
   deepLinkAndroid: z.string().optional(),
+  deepLinkFallbackUrl: z.string().optional(),
   enableABTesting: z.boolean().default(false).optional(),
   abTestVariantBUrl: z.string().optional().refine(value => {
-    if (!value) return true; // Only required if A/B testing is enabled
+    if (!value) return true; 
     try {
       new URL(value.startsWith('http') ? value : `http://${value}`);
       return true;
@@ -65,7 +66,7 @@ const urlInputFormSchema = z.object({
   }, { message: 'Variant B URL is invalid. Please enter a valid URL.' }),
   abTestSplitPercentage: z.number().min(0).max(100).default(50).optional(),
   enableRetargeting: z.boolean().default(false).optional(),
-  retargetingPixelId: z.string().optional(),
+  selectedRetargetingPixelId: z.string().optional(), // Stores the ID of the selected RetargetingPixel
 }).refine(data => {
   if (data.enableABTesting && !data.abTestVariantBUrl) {
     return false;
@@ -89,7 +90,7 @@ const urlInputFormSchema = z.object({
     return true;
 }, {
     message: "URL Rotation and A/B Testing cannot be enabled at the same time for a single link.",
-    path: ["enableABTesting"], // Or enableRotation, path for the second one typically shows error
+    path: ["enableABTesting"], 
 });
 
 
@@ -104,9 +105,10 @@ const defaultValues: Partial<UrlInputFormValues> = {
   enableRetargeting: false,
   deepLinkIOS: '',
   deepLinkAndroid: '',
+  deepLinkFallbackUrl: '',
   abTestVariantBUrl: '',
   abTestSplitPercentage: 50,
-  retargetingPixelId: '',
+  selectedRetargetingPixelId: 'none',
   customAlias: '',
   title: '',
   tags: '',
@@ -122,19 +124,20 @@ export function UrlInputForm({ onLinkAdded }: UrlInputFormProps) {
   const { toast } = useToast();
   const [verifiedDomains, setVerifiedDomains] = useState<CustomDomain[]>([]);
   const [linkGroups, setLinkGroups] = useState<LinkGroup[]>([]);
+  const [retargetingPixels, setRetargetingPixels] = useState<RetargetingPixel[]>([]);
   const form = useForm<UrlInputFormValues>({
     resolver: zodResolver(urlInputFormSchema),
     defaultValues,
     mode: 'onChange',
   });
-  const [shortenerDomainState, setShortenerDomainState] = useState('linkyle.com');
+  const [shortenerDomainState, setShortenerDomainState] = useState('linkwiz.dev');
 
 
   useEffect(() => {
-    const domains = getMockCustomDomains();
-    setVerifiedDomains(domains.filter(d => d.verified));
+    setVerifiedDomains(getMockCustomDomains().filter(d => d.verified));
     setShortenerDomainState(getShortenerDomain());
     setLinkGroups(getMockLinkGroups());
+    setRetargetingPixels(getMockRetargetingPixels());
   }, []);
 
   async function onSubmit(data: UrlInputFormValues) {
@@ -162,17 +165,20 @@ export function UrlInputForm({ onLinkAdded }: UrlInputFormProps) {
     let errorMessages: string[] = [];
 
     const selectedCustomDomainName = data.customDomain === 'default' ? undefined : data.customDomain;
-    const selectedGroupId = data.groupId === 'none' ? undefined : data.groupId;
+    const selectedGroupIdValue = data.groupId === 'none' ? undefined : data.groupId;
+    const selectedPixelId = data.selectedRetargetingPixelId === 'none' ? undefined : data.selectedRetargetingPixelId;
+
 
     const commonPropsForAddMockLink: Omit<Parameters<typeof addMockLink>[0], 'destinationUrls' | 'isRotation' | 'isABTest' | 'variantBUrl' | 'abTestSplitPercentage'> = {
       title: data.title,
       tags: data.tags,
       isCloaked: data.enableCloaking,
-      deepLinkIOS: data.enableDeepLinking ? data.deepLinkIOS : undefined,
-      deepLinkAndroid: data.enableDeepLinking ? data.deepLinkAndroid : undefined,
-      retargetingPixelId: data.enableRetargeting ? data.retargetingPixelId : undefined,
+      deepLinkIOSAppUriScheme: data.enableDeepLinking ? data.deepLinkIOS : undefined,
+      deepLinkAndroidAppUriScheme: data.enableDeepLinking ? data.deepLinkAndroid : undefined,
+      deepLinkFallbackUrl: data.enableDeepLinking ? data.deepLinkFallbackUrl : undefined,
+      selectedRetargetingPixelId: data.enableRetargeting ? selectedPixelId : undefined,
       customDomain: selectedCustomDomainName,
-      groupId: selectedGroupId,
+      groupId: selectedGroupIdValue,
     };
 
     try {
@@ -182,17 +188,16 @@ export function UrlInputForm({ onLinkAdded }: UrlInputFormProps) {
             variantB = `https://${variantB}`;
          }
         addMockLink({
-          destinationUrls: [urlList[0]], // Variant A is the first URL from the main input
+          destinationUrls: [urlList[0]], 
           variantBUrl: variantB,
           isABTest: true,
-          isRotation: false, // A/B test and rotation are mutually exclusive
+          isRotation: false, 
           customAlias: data.customAlias,
           abTestSplitPercentage: data.abTestSplitPercentage,
           ...commonPropsForAddMockLink,
         });
-        createdCount = 1; // A/B test creates a single short link
+        createdCount = 1; 
       } else if (data.enableRotation && urlList.length > 1) {
-        // Single link with multiple targets for rotation
         addMockLink({
           destinationUrls: urlList,
           isRotation: true,
@@ -202,7 +207,6 @@ export function UrlInputForm({ onLinkAdded }: UrlInputFormProps) {
         });
         createdCount = 1;
       } else {
-        // Multiple individual links OR a single link (not A/B, not rotation)
         urlList.forEach((url, index) => {
           const isFirstUrlInBatch = index === 0;
           const applyCustomAlias = isFirstUrlInBatch ? data.customAlias : undefined;
@@ -227,7 +231,7 @@ export function UrlInputForm({ onLinkAdded }: UrlInputFormProps) {
         description: `Successfully generated ${createdCount} short link${createdCount > 1 ? 's' : ''}.`,
         variant: 'default',
       });
-      form.reset(); // Reset form to default values
+      form.reset(); 
       onLinkAdded?.();
     } else if (errorMessages.length > 0) {
        toast({
@@ -551,6 +555,17 @@ export function UrlInputForm({ onLinkAdded }: UrlInputFormProps) {
                                 </FormItem>
                               )}
                             />
+                            <FormField
+                              control={form.control}
+                              name="deepLinkFallbackUrl"
+                              render={({ field: fallbackField }) => (
+                                <FormItem>
+                                  <FormLabel>Fallback URL (Optional)</FormLabel>
+                                  <FormControl><Input placeholder="https://example.com/fallback" {...fallbackField} /></FormControl>
+                                   <FormDescription>If app is not installed, redirect to this web URL. Defaults to App/Play Store if not set.</FormDescription>
+                                </FormItem>
+                              )}
+                            />
                              <FormMessage>{form.formState.errors.deepLinkIOS?.message || form.formState.errors.root?.message}</FormMessage>
                           </div>
                         )}
@@ -579,11 +594,27 @@ export function UrlInputForm({ onLinkAdded }: UrlInputFormProps) {
                         {form.watch('enableRetargeting') && (
                             <FormField
                             control={form.control}
-                            name="retargetingPixelId"
+                            name="selectedRetargetingPixelId"
                             render={({ field: pixelField }) => (
                                 <FormItem className="mt-4">
-                                <FormLabel>Pixel ID (e.g., Facebook Pixel ID)</FormLabel>
-                                <FormControl><Input placeholder="Enter Pixel ID" {...pixelField} /></FormControl>
+                                <FormLabel>Select Retargeting Pixel</FormLabel>
+                                <Select onValueChange={pixelField.onChange} defaultValue={pixelField.value}>
+                                    <FormControl>
+                                        <SelectTrigger>
+                                            <SelectValue placeholder="Select a pixel to apply" />
+                                        </SelectTrigger>
+                                    </FormControl>
+                                    <SelectContent>
+                                        <SelectItem value="none">No Pixel</SelectItem>
+                                        {retargetingPixels.map(pixel => (
+                                        <SelectItem key={pixel.id} value={pixel.id}>
+                                            {pixel.name} ({pixel.type})
+                                        </SelectItem>
+                                        ))}
+                                    </SelectContent>
+                                </Select>
+                                <FormDescription>Choose an existing retargeting pixel to attach to this link/these links.</FormDescription>
+                                <FormMessage />
                                 </FormItem>
                             )}
                             />
@@ -605,3 +636,4 @@ export function UrlInputForm({ onLinkAdded }: UrlInputFormProps) {
     </Card>
   );
 }
+

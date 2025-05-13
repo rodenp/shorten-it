@@ -1,5 +1,4 @@
-
-import type { LinkItem, AnalyticEvent, CustomDomain, TeamMember, LinkTarget, LinkGroup, ApiKey } from '@/types';
+import type { LinkItem, AnalyticEvent, CustomDomain, TeamMember, LinkTarget, LinkGroup, ApiKey, RetargetingPixel } from '@/types';
 
 let shortenerDomain = process.env.NEXT_PUBLIC_SHORTENER_DOMAIN || 'linkyle.com'; 
 
@@ -7,11 +6,13 @@ export const getShortenerDomain = (): string => {
   return shortenerDomain;
 };
 
-// This function might not be needed if exclusively relying on .env
 export const setShortenerDomain = (domain: string) => {
   shortenerDomain = domain || 'linkyle.com';
 };
 
+const generateMockId = () => {
+  return Date.now().toString(36) + Math.random().toString(36).substring(2, 9);
+};
 
 let linksDB: LinkItem[] = [
   {
@@ -27,6 +28,7 @@ let linksDB: LinkItem[] = [
     isCloaked: false,
     tags: ['marketing', 'promo'],
     groupId: 'group1',
+    retargetingPixels: [{ name: 'Main FB Pixel', type: 'Facebook Pixel', pixelIdValue: '1234567890' }]
   },
   {
     id: '2',
@@ -38,7 +40,7 @@ let linksDB: LinkItem[] = [
     createdAt: new Date(Date.now() - 3 * 24 * 60 * 60 * 1000).toISOString(),
     title: 'Feature Page Q2',
     isCloaked: true,
-    deepLinkConfig: { iosAppUriScheme: 'myapp://product/123', androidAppUriScheme: 'myapp://product/123' },
+    deepLinkConfig: { iosAppUriScheme: 'myapp://product/123', androidAppUriScheme: 'myapp://product/123', fallbackUrl: 'https://example.com/fallback' },
     tags: ['product', 'mobile'],
     groupId: 'group2',
   },
@@ -130,15 +132,15 @@ let teamMembersDB: TeamMember[] = [
 ];
 
 let linkGroupsDB: LinkGroup[] = [
-    { id: 'group1', name: 'Marketing Campaigns', description: 'All links related to marketing efforts.', createdAt: new Date(Date.now() - 10 * 24 * 60 * 60 * 1000).toISOString() },
-    { id: 'group2', name: 'Product Launches', description: 'Links for new product announcements.', createdAt: new Date(Date.now() - 5 * 24 * 60 * 60 * 1000).toISOString() },
+    { id: 'group1', name: 'Marketing Campaigns', description: 'All links related to marketing efforts.', createdAt: new Date(Date.now() - 10 * 24 * 60 * 60 * 1000).toISOString(), linkCount: linksDB.filter(l => l.groupId === 'group1').length },
+    { id: 'group2', name: 'Product Launches', description: 'Links for new product announcements.', createdAt: new Date(Date.now() - 5 * 24 * 60 * 60 * 1000).toISOString(), linkCount: linksDB.filter(l => l.groupId === 'group2').length },
 ];
 
 let apiKeysDB: ApiKey[] = [
     { 
         id: 'key1', 
         name: 'My Main Integration', 
-        key: 'lwiz_sk_xxxxxxxxxxxxxxxxxxxxxxxx1234', 
+        key: `lwiz_sk_${generateMockId()}${generateMockId()}`.slice(0,32), // Ensure fixed length for example display
         prefix: 'lwiz_sk_xxxx',
         createdAt: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString(), 
         lastUsedAt: new Date(Date.now() - 2 * 24 * 60 * 60 * 1000).toISOString(),
@@ -147,17 +149,80 @@ let apiKeysDB: ApiKey[] = [
     { 
         id: 'key2', 
         name: 'Read-Only Analytics Key', 
-        key: 'lwiz_pk_yyyyyyyyyyyyyyyyyyyyyyyy5678', 
+        key: `lwiz_pk_${generateMockId()}${generateMockId()}`.slice(0,32), // Ensure fixed length
         prefix: 'lwiz_pk_yyyy',
         createdAt: new Date(Date.now() - 5 * 24 * 60 * 60 * 1000).toISOString(),
         permissions: ['analytics:read']
     },
 ];
 
+let retargetingPixelsDB: RetargetingPixel[] = [
+  { id: 'px1', name: 'Main FB Pixel', type: 'Facebook Pixel', pixelIdValue: '123456789012345', createdAt: new Date(Date.now() - 10 * 24 * 60 * 60 * 1000).toISOString()},
+  { id: 'px2', name: 'Google Ads Campaign X', type: 'Google Ads Tag', pixelIdValue: 'AW-987654321', createdAt: new Date(Date.now() - 5 * 24 * 60 * 60 * 1000).toISOString()},
+  { id: 'px3', name: 'LinkedIn General', type: 'LinkedIn Insight Tag', pixelIdValue: 'LNKD-9876', createdAt: new Date(Date.now() - 2 * 24 * 60 * 60 * 1000).toISOString() }
+];
 
-const generateMockId = () => {
-  return Date.now().toString(36) + Math.random().toString(36).substring(2, 9);
+
+// --- Retargeting Pixel Functions ---
+export const getMockRetargetingPixels = (): RetargetingPixel[] => {
+  return JSON.parse(JSON.stringify(retargetingPixelsDB.sort((a,b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())));
 }
+
+export const addMockRetargetingPixel = (name: string, type: RetargetingPixel['type'], pixelIdValue: string): RetargetingPixel | { error: string } => {
+  if (!name.trim()) return { error: "Pixel name cannot be empty." };
+  if (!pixelIdValue.trim()) return { error: "Pixel ID cannot be empty." };
+  if (retargetingPixelsDB.some(p => p.name.toLowerCase() === name.trim().toLowerCase())) {
+    return { error: "A pixel with this name already exists." };
+  }
+  const newPixel: RetargetingPixel = {
+    id: generateMockId(),
+    name: name.trim(),
+    type,
+    pixelIdValue: pixelIdValue.trim(),
+    createdAt: new Date().toISOString(),
+  };
+  retargetingPixelsDB.unshift(newPixel);
+  return JSON.parse(JSON.stringify(newPixel));
+}
+
+export const updateMockRetargetingPixel = (pixelId: string, name: string, type: RetargetingPixel['type'], pixelIdValue: string): RetargetingPixel | { error: string } => {
+  if (!name.trim()) return { error: "Pixel name cannot be empty." };
+  if (!pixelIdValue.trim()) return { error: "Pixel ID cannot be empty." };
+  
+  const pixelIndex = retargetingPixelsDB.findIndex(p => p.id === pixelId);
+  if (pixelIndex === -1) {
+    return { error: "Pixel not found." };
+  }
+  if (retargetingPixelsDB.some(p => p.name.toLowerCase() === name.trim().toLowerCase() && p.id !== pixelId)) {
+    return { error: "Another pixel with this name already exists." };
+  }
+  retargetingPixelsDB[pixelIndex] = {
+    ...retargetingPixelsDB[pixelIndex],
+    name: name.trim(),
+    type,
+    pixelIdValue: pixelIdValue.trim(),
+  };
+  return JSON.parse(JSON.stringify(retargetingPixelsDB[pixelIndex]));
+}
+
+export const deleteMockRetargetingPixel = (pixelId: string): boolean => {
+  const initialLength = retargetingPixelsDB.length;
+  const pixelToDelete = retargetingPixelsDB.find(p => p.id === pixelId);
+  if (!pixelToDelete) return false;
+
+  retargetingPixelsDB = retargetingPixelsDB.filter(pixel => pixel.id !== pixelId);
+  
+  linksDB.forEach(link => {
+    if (link.retargetingPixels) {
+      link.retargetingPixels = link.retargetingPixels.filter(rp => rp.pixelIdValue !== pixelToDelete.pixelIdValue || rp.type !== pixelToDelete.type);
+       if (link.retargetingPixels.length === 0) {
+        delete link.retargetingPixels;
+      }
+    }
+  });
+  return retargetingPixelsDB.length < initialLength;
+}
+
 
 // --- API Key Functions ---
 export const getMockApiKeys = (): ApiKey[] => {
@@ -171,17 +236,17 @@ export const addMockApiKey = (name: string): ApiKey | { error: string } => {
   if (apiKeysDB.some(key => key.name.toLowerCase() === name.trim().toLowerCase())) {
     return { error: "An API Key with this name already exists." };
   }
-  const newKeyValue = `lwiz_sk_${generateMockId()}${generateMockId()}`; // Example generation
+  const newKeyValue = `lwiz_sk_${generateMockId()}${generateMockId()}`.slice(0,32);
   const newApiKey: ApiKey = {
     id: generateMockId(),
     name: name.trim(),
     key: newKeyValue,
-    prefix: newKeyValue.substring(0, 12).replace(/.(?=.{4})/g, 'x'), // lwiz_sk_xxxxxxxx
+    prefix: newKeyValue.substring(0, 12).replace(/.(?=.{4})/g, 'x'), // e.g. lwiz_sk_xxxxxxxx
     createdAt: new Date().toISOString(),
-    permissions: ['links:read', 'links:write', 'analytics:read'], // Default permissions
+    permissions: ['links:read', 'links:write', 'analytics:read'], 
   };
   apiKeysDB.unshift(newApiKey);
-  return JSON.parse(JSON.stringify(newApiKey)); // Return the full key for display once
+  return JSON.parse(JSON.stringify(newApiKey)); 
 }
 
 export const deleteMockApiKey = (apiKeyId: string): boolean => {
@@ -221,6 +286,7 @@ export const addMockLinkGroup = (name: string, description?: string): LinkGroup 
         name: name.trim(),
         description: description?.trim(),
         createdAt: new Date().toISOString(),
+        linkCount: 0,
     };
     linkGroupsDB.unshift(newGroup);
     return JSON.parse(JSON.stringify(newGroup));
@@ -239,13 +305,13 @@ export const updateMockLinkGroup = (groupId: string, name: string, description?:
     }
     linkGroupsDB[groupIndex].name = name.trim();
     linkGroupsDB[groupIndex].description = description?.trim();
+    linkGroupsDB[groupIndex].linkCount = linksDB.filter(link => link.groupId === groupId).length;
     return JSON.parse(JSON.stringify(linkGroupsDB[groupIndex]));
 };
 
 export const deleteMockLinkGroup = (groupId: string): boolean => {
     const initialLength = linkGroupsDB.length;
     linkGroupsDB = linkGroupsDB.filter(group => group.id !== groupId);
-    // Remove groupId from links that belonged to this group
     linksDB.forEach(link => {
         if (link.groupId === groupId) {
             link.groupId = undefined;
@@ -261,7 +327,7 @@ export const getMockLinks = (): LinkItem[] => {
   return JSON.parse(JSON.stringify(linksDB.map(link => ({
     ...link,
     shortUrl: `https://${link.customDomain || currentGlobalDomain}/${link.slug}`
-  }))));
+  })).sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())));
 };
 
 export const getLinksCount = (): number => {
@@ -293,7 +359,7 @@ interface AddMockLinkParams {
   deepLinkIOSAppUriScheme?: string;
   deepLinkAndroidAppUriScheme?: string;
   deepLinkFallbackUrl?: string;
-  retargetingPixelId?: string;
+  selectedRetargetingPixelId?: string; 
   customDomain?: string;
   abTestSplitPercentage?: number; 
   groupId?: string;
@@ -308,6 +374,14 @@ export const addMockLink = (params: AddMockLinkParams): LinkItem => {
   }
   
   const primaryUrl = params.destinationUrls[0];
+
+  let linkRetargetingPixels: LinkItem['retargetingPixels'] = undefined;
+  if (params.selectedRetargetingPixelId) {
+    const pixel = retargetingPixelsDB.find(p => p.id === params.selectedRetargetingPixelId);
+    if (pixel) {
+      linkRetargetingPixels = [{ name: pixel.name, type: pixel.type, pixelIdValue: pixel.pixelIdValue }];
+    }
+  }
 
   const newLink: LinkItem = {
     id: generateMockId(),
@@ -328,9 +402,7 @@ export const addMockLink = (params: AddMockLinkParams): LinkItem => {
           fallbackUrl: params.deepLinkFallbackUrl || ''
         }
       : undefined,
-    retargetingPixels: params.retargetingPixelId
-      ? [{ platform: 'custom', pixelId: params.retargetingPixelId }]
-      : undefined,
+    retargetingPixels: linkRetargetingPixels,
     customDomain: params.customDomain,
     groupId: params.groupId || undefined,
   };
@@ -482,4 +554,5 @@ export const mockCustomDomains = customDomainsDB;
 export const mockTeamMembers = teamMembersDB;
 export const mockLinkGroups = linkGroupsDB;
 export const mockApiKeys = apiKeysDB;
+export const mockRetargetingPixels = retargetingPixelsDB; 
 export const getMockAnalyticsForLink = getMockAnalyticsChartDataForLink;

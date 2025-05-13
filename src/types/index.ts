@@ -11,6 +11,15 @@ export interface LinkGroup {
   linkCount?: number; // Optional: to display how many links are in this group
 }
 
+export interface RetargetingPixel {
+  id: string;
+  name: string;
+  type: 'Facebook Pixel' | 'Google Ads Tag' | 'LinkedIn Insight Tag' | 'Custom';
+  pixelIdValue: string; // The actual ID/tag from the platform
+  createdAt: string; // ISO date string
+}
+
+
 export interface LinkItem {
   id: string;
   originalUrl: string; // Represents the primary destination or Variant A in an A/B test.
@@ -23,7 +32,8 @@ export interface LinkItem {
   isCloaked?: boolean;
   deepLinkConfig?: { iosAppUriScheme: string; androidAppUriScheme: string; fallbackUrl?: string };
   abTestConfig?: { variantAUrl: string; variantBUrl: string; splitPercentage: number };
-  retargetingPixels?: { platform: string; pixelId: string }[];
+  // Storing an array of pixel objects directly associated with the link
+  retargetingPixels?: { name: string; type: RetargetingPixel['type']; pixelIdValue: string }[];
   tags?: string[];
   title?: string;
   groupId?: string; 
@@ -66,3 +76,4 @@ export interface ApiKey {
   lastUsedAt?: string; // ISO date string, optional
   permissions?: string[]; // e.g., ['links:read', 'links:write']
 }
+

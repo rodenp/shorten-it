@@ -9,7 +9,8 @@ import { ArrowLeft, Settings, Info } from 'lucide-react';
 import { CustomDomainsSettings } from '@/components/settings/custom-domains-settings';
 import { ProfileSettings } from '@/components/settings/profile-settings'; 
 import { AppearanceSettings } from '@/components/settings/appearance-settings';
-import { ApiKeysSettings } from '@/components/settings/api-keys-settings'; // Import the new component
+import { ApiKeysSettings } from '@/components/settings/api-keys-settings';
+import { RetargetingSettings } from '@/components/settings/retargeting-settings';
 // Import other specific settings components here as they are created
 // import { TeamCollaborationSettings } from '@/components/settings/team-collaboration-settings'; 
 // etc.
@@ -32,12 +33,12 @@ export default function SpecificSettingPage() {
         return <ProfileSettings />; 
       case 'appearance':
         return <AppearanceSettings />;
-      case 'apikeys': // Add case for API Keys
+      case 'apikeys':
         return <ApiKeysSettings />;
+      case 'retargeting':
+        return <RetargetingSettings />;
       // case 'team':
       //   return <TeamCollaborationSettings />;
-      // case 'retargeting':
-      //   return <RetargetingSettings />;
       default:
         return (
           <Card className="w-full shadow-lg">
@@ -77,3 +78,4 @@ export default function SpecificSettingPage() {
     </div>
   );
 }
+
