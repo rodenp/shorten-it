@@ -2,7 +2,7 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
-import type { TeamMember } from '@/types';
+import type { TeamMember, UserProfile } from '@/types';
 import {
   getMockTeamMembers,
   addMockTeamMember,
@@ -40,6 +40,7 @@ import {
   AlertDialogTrigger,
 } from '@/components/ui/alert-dialog';
 import { Separator } from '../ui/separator';
+import { Badge } from '@/components/ui/badge'; // Added import for Badge
 
 const roles: TeamMember['role'][] = ['admin', 'editor', 'viewer'];
 
