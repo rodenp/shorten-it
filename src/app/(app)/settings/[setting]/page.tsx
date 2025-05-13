@@ -11,8 +11,8 @@ import { ProfileSettings } from '@/components/settings/profile-settings';
 import { AppearanceSettings } from '@/components/settings/appearance-settings';
 import { ApiKeysSettings } from '@/components/settings/api-keys-settings';
 import { RetargetingSettings } from '@/components/settings/retargeting-settings';
+import { TeamCollaborationSettings } from '@/components/settings/team-collaboration-settings'; 
 // Import other specific settings components here as they are created
-// import { TeamCollaborationSettings } from '@/components/settings/team-collaboration-settings'; 
 // etc.
 
 export default function SpecificSettingPage() {
@@ -37,8 +37,8 @@ export default function SpecificSettingPage() {
         return <ApiKeysSettings />;
       case 'retargeting':
         return <RetargetingSettings />;
-      // case 'team':
-      //   return <TeamCollaborationSettings />;
+      case 'team':
+        return <TeamCollaborationSettings />;
       default:
         return (
           <Card className="w-full shadow-lg">

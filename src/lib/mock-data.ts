@@ -1,13 +1,13 @@
 import type { LinkItem, AnalyticEvent, CustomDomain, TeamMember, LinkTarget, LinkGroup, ApiKey, RetargetingPixel, UserProfile } from '@/types';
 
-let shortenerDomain = process.env.NEXT_PUBLIC_SHORTENER_DOMAIN || 'linkwiz.dev'; 
+let shortenerDomain = process.env.NEXT_PUBLIC_SHORTENER_DOMAIN || 'linkyle.com'; 
 
 export const getShortenerDomain = (): string => {
   return shortenerDomain;
 };
 
 export const setShortenerDomain = (domain: string) => {
-  shortenerDomain = domain || 'linkwiz.dev';
+  shortenerDomain = domain || 'linkyle.com';
 };
 
 const generateMockId = () => {
@@ -18,8 +18,8 @@ const generateMockId = () => {
 let mockCurrentUserProfile: UserProfile = {
   id: 'user1',
   fullName: "Current User",
-  email: "user@linkwiz.com",
-  avatarUrl: `https://picsum.photos/seed/user-avatar-${generateMockId()}/100/100`, // Initial dynamic avatar
+  email: "user@linkyle.com",
+  avatarUrl: `https://picsum.photos/seed/user-avatar-${generateMockId()}/100/100`,
 };
 
 export const getMockCurrentUserProfile = (): UserProfile => {
@@ -32,8 +32,8 @@ export const updateMockCurrentUserProfile = (data: Partial<Omit<UserProfile, 'id
   const teamMemberIndex = teamMembersDB.findIndex(tm => tm.id === mockCurrentUserProfile.id);
   if (teamMemberIndex !== -1) {
     teamMembersDB[teamMemberIndex] = {
-      ...teamMembersDB[teamMemberIndex],
-      ...mockCurrentUserProfile,
+      ...teamMembersDB[teamMemberIndex], // keep role
+      ...mockCurrentUserProfile, // update with new profile data
     };
   }
   return getMockCurrentUserProfile();
@@ -545,15 +545,63 @@ export const updateMockCustomDomainName = (domainId: string, newName: string): C
 
 // --- Team Member Functions ---
 export const getMockTeamMembers = (): TeamMember[] => {
-  // Ensure the current user's data in teamMembersDB is up-to-date with mockCurrentUserProfile
-  const currentUserInTeamIndex = teamMembersDB.findIndex(tm => tm.id === mockCurrentUserProfile.id);
+  const currentUser = getMockCurrentUserProfile(); // Get potentially updated current user
+  const currentUserInTeamIndex = teamMembersDB.findIndex(tm => tm.id === currentUser.id);
+
   if (currentUserInTeamIndex !== -1) {
+    // Update the current user's details in the team list if they exist
     teamMembersDB[currentUserInTeamIndex] = {
       ...teamMembersDB[currentUserInTeamIndex], // keep role
-      ...mockCurrentUserProfile, // override with latest profile data
+      fullName: currentUser.fullName,
+      email: currentUser.email,
+      avatarUrl: currentUser.avatarUrl,
     };
+  } else {
+    // This case should ideally not happen if the current user is always part of the team.
+    // If it can, you might want to add them here:
+    // teamMembersDB.push({ ...currentUser, role: 'admin' }); 
   }
-  return JSON.parse(JSON.stringify(teamMembersDB));
+  return JSON.parse(JSON.stringify(teamMembersDB.sort((a, b) => a.fullName.localeCompare(b.fullName))));
+};
+
+export const addMockTeamMember = (email: string, role: TeamMember['role'] = 'viewer'): TeamMember | { error: string } => {
+  if (teamMembersDB.some(tm => tm.email.toLowerCase() === email.toLowerCase())) {
+    return { error: "A team member with this email already exists." };
+  }
+  const newMember: TeamMember = {
+    id: generateMockId(),
+    fullName: email.split('@')[0] || `User ${teamMembersDB.length + 1}`, // Simple name generation
+    email: email,
+    avatarUrl: `https://picsum.photos/seed/${email}-${generateMockId()}/40/40`,
+    role: role,
+  };
+  teamMembersDB.push(newMember);
+  return JSON.parse(JSON.stringify(newMember));
+};
+
+export const deleteMockTeamMember = (memberId: string): boolean | { error: string } => {
+  if (memberId === mockCurrentUserProfile.id) {
+    return { error: "You cannot remove yourself from the team." };
+  }
+  const initialLength = teamMembersDB.length;
+  teamMembersDB = teamMembersDB.filter(member => member.id !== memberId);
+  return teamMembersDB.length < initialLength;
+};
+
+export const updateMockTeamMemberRole = (memberId: string, newRole: TeamMember['role']): TeamMember | { error: string } => {
+  const memberIndex = teamMembersDB.findIndex(tm => tm.id === memberId);
+  if (memberIndex === -1) {
+    return { error: "Team member not found." };
+  }
+  // Prevent demoting the last admin if it's the current user (or generally)
+  if (teamMembersDB[memberIndex].role === 'admin' && newRole !== 'admin') {
+    const adminCount = teamMembersDB.filter(tm => tm.role === 'admin').length;
+    if (adminCount <= 1) {
+      return { error: "Cannot remove the last admin. Assign another admin first." };
+    }
+  }
+  teamMembersDB[memberIndex].role = newRole;
+  return JSON.parse(JSON.stringify(teamMembersDB[memberIndex]));
 };
 
 
@@ -587,7 +635,6 @@ export const getMockAnalyticsChartDataForLink = (linkId: string, days: number = 
 export const mockLinks = linksDB;
 export const mockAnalyticsEvents = analyticsEventsDB;
 export const mockCustomDomains = customDomainsDB;
-// export const mockTeamMembers = teamMembersDB; // Already handled by getMockTeamMembers
 export const mockLinkGroups = linkGroupsDB;
 export const mockApiKeys = apiKeysDB;
 export const mockRetargetingPixels = retargetingPixelsDB; 
