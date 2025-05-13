@@ -8,7 +8,8 @@ import Link from 'next/link';
 import { ArrowLeft, FlaskConical, Info, Shuffle, Settings2, ShieldCheck, MoveDiagonal, GitFork, FileText } from 'lucide-react';
 import Image from 'next/image';
 import { LinkGroupsManagement } from '@/components/features/link-groups-management';
-import { DeepLinkingFeature } from '@/components/features/deep-linking-feature'; // Added
+import { DeepLinkingFeature } from '@/components/features/deep-linking-feature';
+import { LinkCloakingFeature } from '@/components/features/link-cloaking-feature'; // Added
 
 const featureDetails: Record<string, {
   title: string;
@@ -24,6 +25,7 @@ const featureDetails: Record<string, {
     description: "Distribute traffic across multiple destination URLs from a single short link.",
     details: "Set up URL rotation to send users to different web pages based on predefined weights or sequentially. Ideal for testing different landing pages, distributing load, or running regional campaigns. You can configure weights for each target URL to control the traffic distribution.",
     imageHint: "arrows cycle",
+    isImplemented: true,
   },
   'ab-testing': {
     title: "A/B Testing",
@@ -31,6 +33,7 @@ const featureDetails: Record<string, {
     description: "Test different destination URLs to see which performs better.",
     details: "A/B testing allows you to split traffic between two different destination URLs (Variant A and Variant B) from a single short link. You can define the percentage of traffic to send to Variant A, with the remainder going to Variant B. This is useful for optimizing conversion rates by comparing the performance of different landing pages or offers.",
     imageHint: "split comparison",
+    isImplemented: true,
   },
   cloaking: {
     title: "Link Cloaking",
@@ -38,6 +41,7 @@ const featureDetails: Record<string, {
     description: "Mask the destination URL, showing your short link in the browser's address bar.",
     details: "Link cloaking, also known as URL masking, keeps your short link visible in the user's browser address bar even after they've been redirected to the destination URL. This can be useful for affiliate marketing or branding purposes. However, be aware that some websites may not allow themselves to be cloaked (e.g., by using frame-breaking scripts).",
     imageHint: "mask disguise",
+    isImplemented: true, // Mark as implemented
   },
   deeplinking: {
     title: "Deep Linking",
@@ -45,7 +49,7 @@ const featureDetails: Record<string, {
     description: "Send users directly to specific content within your mobile app.",
     details: "Deep linking allows your short links to intelligently redirect users to specific content or pages within your iOS or Android mobile application if they have it installed. If the app isn't installed, they can be redirected to the app store or a fallback web URL. This provides a seamless user experience for mobile users.",
     imageHint: "mobile app",
-    isImplemented: true, // Mark as implemented
+    isImplemented: true, 
   },
   groups: {
     title: "Link Groups",
@@ -97,10 +101,72 @@ export default function FeaturePage() {
     if (featureName === 'groups' && currentFeature.isImplemented) {
       return <LinkGroupsManagement />;
     }
-
     if (featureName === 'deeplinking' && currentFeature.isImplemented) {
       return <DeepLinkingFeature />;
     }
+    if (featureName === 'cloaking' && currentFeature.isImplemented) {
+      return <LinkCloakingFeature />;
+    }
+    if (featureName === 'rotation' && currentFeature.isImplemented) {
+      // Assuming a similar component exists or will be created for URL Rotation
+      // For now, reusing the generic placeholder if no specific component for rotation
+       return (
+        <div className="space-y-6">
+          <div className="p-6 border rounded-lg bg-muted/30">
+            <h3 className="text-lg font-semibold mb-2 text-foreground">How {currentFeature.title} Works</h3>
+            <p className="text-muted-foreground whitespace-pre-line">{currentFeature.details}</p>
+          </div>
+          <div className="flex flex-col items-center justify-center text-center p-8 border-2 border-dashed rounded-lg">
+            <Image 
+              src={`https://picsum.photos/seed/${featureName.replace('-', '')}/400/200`} 
+              alt={`${displayFeatureName} illustration`} 
+              width={400} 
+              height={200} 
+              className="rounded-md mb-6 shadow-md"
+              data-ai-hint={currentFeature.imageHint}
+            />
+            <Settings2 className="h-12 w-12 text-muted-foreground mb-3" />
+            <h3 className="text-xl font-semibold mb-1">Configuration Options for {currentFeature.title}</h3>
+            <p className="text-muted-foreground max-w-md">
+              You can set up {currentFeature.title} when creating or editing a link. Provide multiple target URLs and define their distribution weights if applicable.
+            </p>
+            <Button asChild className="mt-4">
+              <Link href="/dashboard">Configure {currentFeature.title}</Link>
+            </Button>
+          </div>
+        </div>
+      );
+    }
+     if (featureName === 'ab-testing' && currentFeature.isImplemented) {
+      // Placeholder for A/B Testing specific component - if any
+       return (
+        <div className="space-y-6">
+          <div className="p-6 border rounded-lg bg-muted/30">
+            <h3 className="text-lg font-semibold mb-2 text-foreground">How {currentFeature.title} Works</h3>
+            <p className="text-muted-foreground whitespace-pre-line">{currentFeature.details}</p>
+          </div>
+          <div className="flex flex-col items-center justify-center text-center p-8 border-2 border-dashed rounded-lg">
+            <Image 
+              src={`https://picsum.photos/seed/${featureName.replace('-', '')}/400/200`} 
+              alt={`${displayFeatureName} illustration`} 
+              width={400} 
+              height={200} 
+              className="rounded-md mb-6 shadow-md"
+              data-ai-hint={currentFeature.imageHint}
+            />
+            <Settings2 className="h-12 w-12 text-muted-foreground mb-3" />
+            <h3 className="text-xl font-semibold mb-1">Configuring {currentFeature.title}</h3>
+            <p className="text-muted-foreground max-w-md">
+             Enable A/B testing when creating or editing a link. You'll provide two destination URLs (Variant A and Variant B) and set the traffic split percentage.
+            </p>
+            <Button asChild className="mt-4">
+              <Link href="/dashboard">Set up an A/B Test</Link>
+            </Button>
+          </div>
+        </div>
+      );
+    }
+
 
     // Default rendering for other features or unimplemented ones
     return (
