@@ -21,12 +21,12 @@ export interface LinkItem {
   createdAt: string; // ISO date string
   customDomain?: string;
   isCloaked?: boolean;
-  deepLinkConfig?: Record<string, string>; // e.g., { ios: "yourapp://path", android: "yourapp://path" }
+  deepLinkConfig?: { iosAppUriScheme: string; androidAppUriScheme: string; fallbackUrl?: string };
   abTestConfig?: { variantAUrl: string; variantBUrl: string; splitPercentage: number };
   retargetingPixels?: { platform: string; pixelId: string }[];
   tags?: string[];
   title?: string;
-  groupId?: string; // Added for link groups
+  groupId?: string; 
 }
 
 export interface AnalyticEvent {
@@ -55,4 +55,14 @@ export interface CustomDomain {
   domainName: string;
   verified: boolean;
   createdAt: string;
+}
+
+export interface ApiKey {
+  id: string;
+  name: string;
+  key: string; // The actual API key string (only shown on creation)
+  prefix: string; // First few chars of the key for display
+  createdAt: string; // ISO date string
+  lastUsedAt?: string; // ISO date string, optional
+  permissions?: string[]; // e.g., ['links:read', 'links:write']
 }

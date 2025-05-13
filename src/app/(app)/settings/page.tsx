@@ -1,24 +1,20 @@
 
-
 'use client';
 
-import { useState, useEffect, useCallback } from "react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import {
-  mockTeamMembers,
-} from "@/lib/mock-data";
+import { mockTeamMembers } from "@/lib/mock-data";
 import type { TeamMember } from "@/types";
-import { Globe, Users, KeyRound, PlusCircle, Trash2, Edit, Target, UserCircle, Palette, CheckCircle, XCircle, AlertTriangle } from "lucide-react";
+import { Globe, Users, KeyRound, PlusCircle, Trash2, Edit, Target, UserCircle, Palette } from "lucide-react";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Separator } from "@/components/ui/separator";
-import { Switch } from "@/components/ui/switch";
 import { CustomDomainsSettings } from "@/components/settings/custom-domains-settings";
 import { ProfileSettings } from "@/components/settings/profile-settings";
 import { AppearanceSettings } from "@/components/settings/appearance-settings";
+import { ApiKeysSettings } from "@/components/settings/api-keys-settings"; // Import the new component
 
 
 function TeamCollaborationSettings() {
@@ -111,41 +107,6 @@ function RetargetingSettings() {
   );
 }
 
-function ApiKeysSettings() {
-  return (
-    <Card>
-      <CardHeader>
-        <CardTitle>API Keys</CardTitle>
-        <CardDescription>Manage API keys for programmatic access to LinkWiz.</CardDescription>
-      </CardHeader>
-      <CardContent className="space-y-6">
-         <div className="flex flex-col sm:flex-row gap-2 items-end">
-          <div className="flex-grow">
-            <Label htmlFor="key-name">New API Key Name</Label>
-            <Input id="key-name" placeholder="e.g., My Integration Key" />
-          </div>
-          <Button><PlusCircle className="mr-2 h-4 w-4" /> Generate API Key</Button>
-        </div>
-        <Separator />
-        <h3 className="text-lg font-medium">Your API Keys</h3>
-         <div className="p-3 border rounded-md">
-            <div className="flex justify-between items-center">
-                <div>
-                    <p className="font-medium">Main Integration Key</p>
-                    <p className="text-xs text-muted-foreground">lw_************************abcd</p>
-                    <p className="text-xs text-muted-foreground">Last used: 2 days ago</p>
-                </div>
-                <div className="space-x-2">
-                    <Button variant="ghost" size="icon"><Trash2 className="h-4 w-4 text-destructive" /></Button>
-                </div>
-            </div>
-        </div>
-        <p className="text-muted-foreground">No other API keys generated yet.</p>
-      </CardContent>
-    </Card>
-  );
-}
-
 
 export default function SettingsPage() {
   const tabsConfig = [
@@ -153,7 +114,7 @@ export default function SettingsPage() {
     { value: "domains", label: "Custom Domains", icon: Globe, component: <CustomDomainsSettings /> },
     { value: "team", label: "Team Collaboration", icon: Users, component: <TeamCollaborationSettings /> },
     { value: "retargeting", label: "Retargeting", icon: Target, component: <RetargetingSettings /> },
-    { value: "apikeys", label: "API Keys", icon: KeyRound, component: <ApiKeysSettings /> },
+    { value: "apikeys", label: "API Keys", icon: KeyRound, component: <ApiKeysSettings /> }, // Updated component
     { value: "appearance", label: "Appearance", icon: Palette, component: <AppearanceSettings /> },
   ];
 

@@ -1,20 +1,16 @@
 
-import type { LinkItem, AnalyticEvent, CustomDomain, TeamMember, LinkTarget, LinkGroup } from '@/types';
+import type { LinkItem, AnalyticEvent, CustomDomain, TeamMember, LinkTarget, LinkGroup, ApiKey } from '@/types';
 
-let shortenerDomain = 'linkyle.com'; // Default value
+let shortenerDomain = process.env.NEXT_PUBLIC_SHORTENER_DOMAIN || 'linkyle.com'; 
 
 export const getShortenerDomain = (): string => {
   return shortenerDomain;
 };
 
+// This function might not be needed if exclusively relying on .env
 export const setShortenerDomain = (domain: string) => {
   shortenerDomain = domain || 'linkyle.com';
 };
-
-// Initialize shortenerDomain from .env if available (client-side effect)
-if (typeof process !== 'undefined' && process.env?.NEXT_PUBLIC_SHORTENER_DOMAIN) {
-  setShortenerDomain(process.env.NEXT_PUBLIC_SHORTENER_DOMAIN);
-}
 
 
 let linksDB: LinkItem[] = [
@@ -42,7 +38,7 @@ let linksDB: LinkItem[] = [
     createdAt: new Date(Date.now() - 3 * 24 * 60 * 60 * 1000).toISOString(),
     title: 'Feature Page Q2',
     isCloaked: true,
-    deepLinkConfig: { ios: 'myapp://product/123', android: 'myapp://product/123' },
+    deepLinkConfig: { iosAppUriScheme: 'myapp://product/123', androidAppUriScheme: 'myapp://product/123' },
     tags: ['product', 'mobile'],
     groupId: 'group2',
   },
@@ -138,9 +134,60 @@ let linkGroupsDB: LinkGroup[] = [
     { id: 'group2', name: 'Product Launches', description: 'Links for new product announcements.', createdAt: new Date(Date.now() - 5 * 24 * 60 * 60 * 1000).toISOString() },
 ];
 
+let apiKeysDB: ApiKey[] = [
+    { 
+        id: 'key1', 
+        name: 'My Main Integration', 
+        key: 'lwiz_sk_xxxxxxxxxxxxxxxxxxxxxxxx1234', 
+        prefix: 'lwiz_sk_xxxx',
+        createdAt: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString(), 
+        lastUsedAt: new Date(Date.now() - 2 * 24 * 60 * 60 * 1000).toISOString(),
+        permissions: ['links:read', 'links:write', 'analytics:read'] 
+    },
+    { 
+        id: 'key2', 
+        name: 'Read-Only Analytics Key', 
+        key: 'lwiz_pk_yyyyyyyyyyyyyyyyyyyyyyyy5678', 
+        prefix: 'lwiz_pk_yyyy',
+        createdAt: new Date(Date.now() - 5 * 24 * 60 * 60 * 1000).toISOString(),
+        permissions: ['analytics:read']
+    },
+];
+
 
 const generateMockId = () => {
   return Date.now().toString(36) + Math.random().toString(36).substring(2, 9);
+}
+
+// --- API Key Functions ---
+export const getMockApiKeys = (): ApiKey[] => {
+  return JSON.parse(JSON.stringify(apiKeysDB.sort((a,b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())));
+}
+
+export const addMockApiKey = (name: string): ApiKey | { error: string } => {
+  if (!name.trim()) {
+    return { error: "API Key name cannot be empty." };
+  }
+  if (apiKeysDB.some(key => key.name.toLowerCase() === name.trim().toLowerCase())) {
+    return { error: "An API Key with this name already exists." };
+  }
+  const newKeyValue = `lwiz_sk_${generateMockId()}${generateMockId()}`; // Example generation
+  const newApiKey: ApiKey = {
+    id: generateMockId(),
+    name: name.trim(),
+    key: newKeyValue,
+    prefix: newKeyValue.substring(0, 12).replace(/.(?=.{4})/g, 'x'), // lwiz_sk_xxxxxxxx
+    createdAt: new Date().toISOString(),
+    permissions: ['links:read', 'links:write', 'analytics:read'], // Default permissions
+  };
+  apiKeysDB.unshift(newApiKey);
+  return JSON.parse(JSON.stringify(newApiKey)); // Return the full key for display once
+}
+
+export const deleteMockApiKey = (apiKeyId: string): boolean => {
+  const initialLength = apiKeysDB.length;
+  apiKeysDB = apiKeysDB.filter(key => key.id !== apiKeyId);
+  return apiKeysDB.length < initialLength;
 }
 
 // --- Link Group Functions ---
@@ -235,19 +282,20 @@ const generateSlug = (domain?: string) => {
 }
 
 interface AddMockLinkParams {
-  destinationUrls: string[]; // Primary URL or list for rotation. Variant A for A/B.
-  variantBUrl?: string; // Variant B for A/B testing.
+  destinationUrls: string[]; 
+  variantBUrl?: string; 
   isRotation?: boolean;
   isABTest?: boolean;
   customAlias?: string;
   title?: string;
   tags?: string;
   isCloaked?: boolean;
-  deepLinkIOS?: string;
-  deepLinkAndroid?: string;
+  deepLinkIOSAppUriScheme?: string;
+  deepLinkAndroidAppUriScheme?: string;
+  deepLinkFallbackUrl?: string;
   retargetingPixelId?: string;
   customDomain?: string;
-  abTestSplitPercentage?: number; // Defaults to 50 if A/B test is enabled.
+  abTestSplitPercentage?: number; 
   groupId?: string;
 }
 
@@ -273,8 +321,12 @@ export const addMockLink = (params: AddMockLinkParams): LinkItem => {
     isCloaked: params.isCloaked,
     targets: [],
     abTestConfig: undefined,
-    deepLinkConfig: (params.deepLinkIOS || params.deepLinkAndroid)
-      ? { ios: params.deepLinkIOS || '', android: params.deepLinkAndroid || '' }
+    deepLinkConfig: (params.deepLinkIOSAppUriScheme || params.deepLinkAndroidAppUriScheme)
+      ? { 
+          iosAppUriScheme: params.deepLinkIOSAppUriScheme || '', 
+          androidAppUriScheme: params.deepLinkAndroidAppUriScheme || '',
+          fallbackUrl: params.deepLinkFallbackUrl || ''
+        }
       : undefined,
     retargetingPixels: params.retargetingPixelId
       ? [{ platform: 'custom', pixelId: params.retargetingPixelId }]
@@ -292,7 +344,7 @@ export const addMockLink = (params: AddMockLinkParams): LinkItem => {
       { url: variantB, weight: 100 - split },
     ];
     newLink.abTestConfig = { variantAUrl: variantA, variantBUrl: variantB, splitPercentage: split };
-    newLink.originalUrl = variantA; // originalUrl becomes variant A
+    newLink.originalUrl = variantA; 
   } else if (params.isRotation && params.destinationUrls.length > 0) {
     const numUrls = params.destinationUrls.length;
     let baseWeight = Math.floor(100 / numUrls);
@@ -301,9 +353,8 @@ export const addMockLink = (params: AddMockLinkParams): LinkItem => {
       let weight = baseWeight + (index < remainder ? 1 : 0);
       return { url, weight };
     });
-    newLink.originalUrl = params.destinationUrls[0]; // First URL in rotation list as primary
+    newLink.originalUrl = params.destinationUrls[0]; 
   } else {
-    // Single destination URL
     newLink.targets = [{ url: primaryUrl, weight: 100 }];
   }
 
@@ -430,4 +481,5 @@ export const mockAnalyticsEvents = analyticsEventsDB;
 export const mockCustomDomains = customDomainsDB;
 export const mockTeamMembers = teamMembersDB;
 export const mockLinkGroups = linkGroupsDB;
+export const mockApiKeys = apiKeysDB;
 export const getMockAnalyticsForLink = getMockAnalyticsChartDataForLink;
