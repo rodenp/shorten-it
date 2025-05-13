@@ -18,7 +18,9 @@ import {
   FormLabel,
   FormMessage,
 } from "@/components/ui/form";
-import React from "react";
+import React, { useEffect } from "react";
+import { getMockCurrentUserProfile, updateMockCurrentUserProfile } from "@/lib/mock-data";
+import type { UserProfile } from "@/types";
 
 const profileFormSchema = z.object({
   fullName: z.string().min(2, { message: "Full name must be at least 2 characters." }).max(50, { message: "Full name must not exceed 50 characters."}),
@@ -35,46 +37,60 @@ const profileFormSchema = z.object({
 
 type ProfileFormValues = z.infer<typeof profileFormSchema>;
 
-// Mock current user data
-const currentUser = {
-  fullName: "Current User",
-  email: "user@linkwiz.com",
-  avatarUrl: "https://picsum.photos/seed/user-settings/100/100",
-};
-
-
 export function ProfileSettings() {
   const { toast } = useToast();
+  
+  // Initialize form with data from mock store
+  const currentUser = getMockCurrentUserProfile();
   const form = useForm<ProfileFormValues>({
     resolver: zodResolver(profileFormSchema),
     defaultValues: {
       fullName: currentUser.fullName,
       email: currentUser.email,
+      avatarUrl: currentUser.avatarUrl,
       newPassword: "",
       confirmPassword: "",
-      avatarUrl: currentUser.avatarUrl,
     },
     mode: "onChange",
   });
 
+  // Effect to reset form if currentUser from mock-data changes (e.g., due to external update)
+  // This might be too aggressive depending on usage, but for a demo it ensures consistency.
+  useEffect(() => {
+    const latestUser = getMockCurrentUserProfile();
+    if (
+      latestUser.fullName !== form.getValues("fullName") ||
+      latestUser.email !== form.getValues("email") ||
+      latestUser.avatarUrl !== form.getValues("avatarUrl")
+    ) {
+      form.reset({
+        fullName: latestUser.fullName,
+        email: latestUser.email,
+        avatarUrl: latestUser.avatarUrl,
+        newPassword: "",
+        confirmPassword: "",
+      });
+    }
+  }, [currentUser.fullName, currentUser.email, currentUser.avatarUrl, form]);
+
 
   const onSubmit = (data: ProfileFormValues) => {
-    console.log("Profile update data:", data);
-    // In a real app, you would send this data to your backend
-    // For this mock, we can update the currentUser object if needed, or just show a toast
-    currentUser.fullName = data.fullName;
-    currentUser.email = data.email;
-    if (data.avatarUrl && data.avatarUrl.startsWith('data:image')) {
-      // If a new avatar was uploaded (data URI), "save" it.
-      // In a real app, this would be an uploaded URL.
-      currentUser.avatarUrl = data.avatarUrl;
+    updateMockCurrentUserProfile({
+      fullName: data.fullName,
+      email: data.email,
+      avatarUrl: data.avatarUrl,
+    });
+
+    if (data.newPassword) {
+      // Mock password update logic
+      console.log("Password updated (mock)");
     }
-    // Password change logic would go here too.
 
     toast({
       title: "Profile Updated",
-      description: "Your profile information has been (mock) updated successfully.",
+      description: "Your profile information has been updated successfully.",
     });
+    form.reset(data); // Keep form values, but reset dirty state
   };
 
   const handleAvatarChange = (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -82,7 +98,6 @@ export function ProfileSettings() {
       const file = event.target.files[0];
       const reader = new FileReader();
       reader.onloadend = () => {
-        // The result is a base64 data URI
         form.setValue("avatarUrl", reader.result as string, { shouldValidate: true, shouldDirty: true });
         toast({
           title: "Avatar Preview Updated",
@@ -109,9 +124,13 @@ export function ProfileSettings() {
               render={({ field }) => (
                 <FormItem className="flex items-center space-x-4">
                   <Avatar className="h-20 w-20">
-                    <AvatarImage src={field.value || `https://picsum.photos/seed/${form.getValues("email")}/100/100`} data-ai-hint="profile picture" alt={form.getValues("fullName")} />
+                    <AvatarImage 
+                      src={field.value || `https://picsum.photos/seed/${form.getValues("email") || 'default-user'}/100/100`} 
+                      alt={form.getValues("fullName") || "User Avatar"}
+                      data-ai-hint={field.value?.startsWith('https://picsum.photos') ? 'profile picture' : undefined}
+                    />
                     <AvatarFallback>
-                        {form.getValues("fullName")?.substring(0,2).toUpperCase() || "CU"}
+                        {form.getValues("fullName")?.substring(0,2).toUpperCase() || currentUser.fullName.substring(0,2).toUpperCase() || "CU"}
                     </AvatarFallback>
                   </Avatar>
                   <div className="flex flex-col space-y-1">
@@ -195,4 +214,3 @@ export function ProfileSettings() {
     </Card>
   );
 }
-

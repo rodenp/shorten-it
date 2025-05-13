@@ -6,7 +6,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { mockTeamMembers } from "@/lib/mock-data";
+import { getMockTeamMembers } from "@/lib/mock-data"; // Updated import
 import type { TeamMember } from "@/types";
 import { Globe, Users, KeyRound, PlusCircle, Trash2, Edit, Target, UserCircle, Palette } from "lucide-react";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
@@ -16,9 +16,17 @@ import { ProfileSettings } from "@/components/settings/profile-settings";
 import { AppearanceSettings } from "@/components/settings/appearance-settings";
 import { ApiKeysSettings } from "@/components/settings/api-keys-settings";
 import { RetargetingSettings } from "@/components/settings/retargeting-settings";
+import React, { useEffect, useState } from "react";
 
 
 function TeamCollaborationSettings() {
+  const [teamMembers, setTeamMembers] = useState<TeamMember[]>([]);
+
+  useEffect(() => {
+    setTeamMembers(getMockTeamMembers());
+  }, []);
+
+
   return (
     <Card>
       <CardHeader>
@@ -35,17 +43,21 @@ function TeamCollaborationSettings() {
         </div>
         <Separator />
         <h3 className="text-lg font-medium">Team Members</h3>
-         {mockTeamMembers.length > 0 ? (
+         {teamMembers.length > 0 ? (
           <ul className="space-y-3">
-            {mockTeamMembers.map((member: TeamMember) => (
+            {teamMembers.map((member: TeamMember) => (
               <li key={member.id} className="flex justify-between items-center p-3 border rounded-md">
                 <div className="flex items-center gap-3">
                     <Avatar className="h-8 w-8">
-                        <AvatarImage src={`https://picsum.photos/seed/${member.email}/40/40`} data-ai-hint="avatar user"/>
-                        <AvatarFallback>{member.name.substring(0,2).toUpperCase()}</AvatarFallback>
+                        <AvatarImage 
+                          src={member.avatarUrl || `https://picsum.photos/seed/${member.email}/40/40`} 
+                          alt={member.fullName}
+                          data-ai-hint={member.avatarUrl.includes('picsum.photos') ? "avatar user" : undefined}
+                        />
+                        <AvatarFallback>{member.fullName.substring(0,2).toUpperCase()}</AvatarFallback>
                     </Avatar>
                     <div>
-                        <span className="font-medium">{member.name}</span>
+                        <span className="font-medium">{member.fullName}</span>
                         <p className="text-xs text-muted-foreground">{member.email}</p>
                     </div>
                 </div>
@@ -97,4 +109,3 @@ export default function SettingsPage() {
     </div>
   );
 }
-

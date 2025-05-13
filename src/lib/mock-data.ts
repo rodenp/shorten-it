@@ -1,18 +1,44 @@
-import type { LinkItem, AnalyticEvent, CustomDomain, TeamMember, LinkTarget, LinkGroup, ApiKey, RetargetingPixel } from '@/types';
+import type { LinkItem, AnalyticEvent, CustomDomain, TeamMember, LinkTarget, LinkGroup, ApiKey, RetargetingPixel, UserProfile } from '@/types';
 
-let shortenerDomain = process.env.NEXT_PUBLIC_SHORTENER_DOMAIN || 'linkyle.com'; 
+let shortenerDomain = process.env.NEXT_PUBLIC_SHORTENER_DOMAIN || 'linkwiz.dev'; 
 
 export const getShortenerDomain = (): string => {
   return shortenerDomain;
 };
 
 export const setShortenerDomain = (domain: string) => {
-  shortenerDomain = domain || 'linkyle.com';
+  shortenerDomain = domain || 'linkwiz.dev';
 };
 
 const generateMockId = () => {
   return Date.now().toString(36) + Math.random().toString(36).substring(2, 9);
 };
+
+// --- Current User Profile ---
+let mockCurrentUserProfile: UserProfile = {
+  id: 'user1',
+  fullName: "Current User",
+  email: "user@linkwiz.com",
+  avatarUrl: `https://picsum.photos/seed/user-avatar-${generateMockId()}/100/100`, // Initial dynamic avatar
+};
+
+export const getMockCurrentUserProfile = (): UserProfile => {
+  return JSON.parse(JSON.stringify(mockCurrentUserProfile));
+};
+
+export const updateMockCurrentUserProfile = (data: Partial<Omit<UserProfile, 'id'>>): UserProfile => {
+  mockCurrentUserProfile = { ...mockCurrentUserProfile, ...data };
+  // Simulate updating related team member entry if current user is also a team member
+  const teamMemberIndex = teamMembersDB.findIndex(tm => tm.id === mockCurrentUserProfile.id);
+  if (teamMemberIndex !== -1) {
+    teamMembersDB[teamMemberIndex] = {
+      ...teamMembersDB[teamMemberIndex],
+      ...mockCurrentUserProfile,
+    };
+  }
+  return getMockCurrentUserProfile();
+};
+
 
 let linksDB: LinkItem[] = [
   {
@@ -127,9 +153,10 @@ let customDomainsDB: CustomDomain[] = [
 ];
 
 let teamMembersDB: TeamMember[] = [
-  { id: 'tm1', name: 'Alice Wonderland', email: 'alice@example.com', role: 'admin' },
-  { id: 'tm2', name: 'Bob The Builder', email: 'bob@example.com', role: 'editor' },
+  { ...mockCurrentUserProfile, id: 'user1', role: 'admin' }, // Current user is an admin team member
+  { id: 'tm2', fullName: 'Bob The Builder', email: 'bob@example.com', role: 'editor', avatarUrl: `https://picsum.photos/seed/bob-avatar-${generateMockId()}/40/40` },
 ];
+
 
 let linkGroupsDB: LinkGroup[] = [
     { id: 'group1', name: 'Marketing Campaigns', description: 'All links related to marketing efforts.', createdAt: new Date(Date.now() - 10 * 24 * 60 * 60 * 1000).toISOString(), linkCount: linksDB.filter(l => l.groupId === 'group1').length },
@@ -518,8 +545,17 @@ export const updateMockCustomDomainName = (domainId: string, newName: string): C
 
 // --- Team Member Functions ---
 export const getMockTeamMembers = (): TeamMember[] => {
+  // Ensure the current user's data in teamMembersDB is up-to-date with mockCurrentUserProfile
+  const currentUserInTeamIndex = teamMembersDB.findIndex(tm => tm.id === mockCurrentUserProfile.id);
+  if (currentUserInTeamIndex !== -1) {
+    teamMembersDB[currentUserInTeamIndex] = {
+      ...teamMembersDB[currentUserInTeamIndex], // keep role
+      ...mockCurrentUserProfile, // override with latest profile data
+    };
+  }
   return JSON.parse(JSON.stringify(teamMembersDB));
 };
+
 
 // --- Chart Data Function (uses current linksDB) ---
 export const getMockAnalyticsChartDataForLink = (linkId: string, days: number = 7): { date: string; clicks: number }[] => {
@@ -551,7 +587,7 @@ export const getMockAnalyticsChartDataForLink = (linkId: string, days: number = 
 export const mockLinks = linksDB;
 export const mockAnalyticsEvents = analyticsEventsDB;
 export const mockCustomDomains = customDomainsDB;
-export const mockTeamMembers = teamMembersDB;
+// export const mockTeamMembers = teamMembersDB; // Already handled by getMockTeamMembers
 export const mockLinkGroups = linkGroupsDB;
 export const mockApiKeys = apiKeysDB;
 export const mockRetargetingPixels = retargetingPixelsDB; 

@@ -21,7 +21,7 @@ export interface RetargetingPixel {
 
 
 export interface LinkItem {
-  id: string;
+  id:string;
   originalUrl: string; // Represents the primary destination or Variant A in an A/B test.
   targets: LinkTarget[]; // Holds all destination URLs, including variants for A/B testing or rotation.
   shortUrl: string;
@@ -53,12 +53,19 @@ export interface AnalyticEvent {
   referrer?: string;
 }
 
-export interface TeamMember {
+export interface UserProfile {
   id: string;
-  name: string;
+  fullName: string;
   email: string;
+  avatarUrl: string; // URL to the avatar image
+  // Add other profile fields as needed, e.g., preferences
+}
+
+export interface TeamMember extends UserProfile {
+  // id, fullName, email, avatarUrl inherited from UserProfile
   role: 'admin' | 'editor' | 'viewer';
 }
+
 
 export interface CustomDomain {
   id: string;

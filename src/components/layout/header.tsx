@@ -1,13 +1,28 @@
+
+'use client';
+
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
-import { SidebarTrigger } from "@/components/ui/sidebar";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
 import { Menu, LogOut, Settings, UserCircle } from "lucide-react";
 import Link from "next/link";
-import AppSidebar from "./sidebar"; // Renamed to AppSidebar to avoid conflict
+import AppSidebar from "./sidebar"; 
+import { useEffect, useState } from "react";
+import { getMockCurrentUserProfile } from "@/lib/mock-data";
+import type { UserProfile } from "@/types";
 
 export default function Header() {
+  const [currentUser, setCurrentUser] = useState<UserProfile | null>(null);
+
+  useEffect(() => {
+    setCurrentUser(getMockCurrentUserProfile());
+  }, []);
+
+  const avatarFallbackName = currentUser?.fullName ? currentUser.fullName.substring(0, 2).toUpperCase() : "LW";
+  const avatarSeed = currentUser?.email || 'default-user-header';
+
+
   return (
     <header className="sticky top-0 z-30 flex h-16 items-center gap-4 border-b bg-background/80 backdrop-blur-sm px-4 md:px-6">
       <div className="md:hidden">
@@ -19,7 +34,6 @@ export default function Header() {
             </Button>
           </SheetTrigger>
           <SheetContent side="left" className="p-0">
-            {/* Pass collapsible='none' to AppSidebar when used in Sheet to ensure it's always expanded */}
             <AppSidebar inSheet={true} />
           </SheetContent>
         </Sheet>
@@ -35,13 +49,17 @@ export default function Header() {
             <DropdownMenuTrigger asChild>
               <Button variant="ghost" size="icon" className="rounded-full">
                 <Avatar className="h-9 w-9">
-                  <AvatarImage src="https://picsum.photos/seed/user/40/40" alt="User Avatar" data-ai-hint="profile avatar" />
-                  <AvatarFallback>LW</AvatarFallback>
+                  <AvatarImage 
+                    src={currentUser?.avatarUrl || `https://picsum.photos/seed/${avatarSeed}/40/40`} 
+                    alt={currentUser?.fullName || "User Avatar"} 
+                    data-ai-hint={(currentUser?.avatarUrl && currentUser.avatarUrl.includes('picsum.photos')) || !currentUser?.avatarUrl ? "profile avatar" : undefined}
+                  />
+                  <AvatarFallback>{avatarFallbackName}</AvatarFallback>
                 </Avatar>
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end">
-              <DropdownMenuLabel>My Account</DropdownMenuLabel>
+              <DropdownMenuLabel>{currentUser?.fullName || "My Account"}</DropdownMenuLabel>
               <DropdownMenuSeparator />
               <DropdownMenuItem asChild>
                 <Link href="/settings/profile" className="flex items-center gap-2">

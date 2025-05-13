@@ -1,3 +1,4 @@
+
 'use client';
 
 import Link from 'next/link';
@@ -10,9 +11,9 @@ import {
   SidebarMenu,
   SidebarMenuItem,
   SidebarMenuButton,
-  SidebarMenuSub,
-  SidebarMenuSubItem,
-  SidebarMenuSubButton,
+  // SidebarMenuSub, // Not used currently
+  // SidebarMenuSubItem, // Not used currently
+  // SidebarMenuSubButton, // Not used currently
   SidebarSeparator,
   SidebarGroup,
   SidebarGroupLabel,
@@ -31,21 +32,28 @@ import {
   MoveDiagonal,
   FlaskConical,
   UserCircle,
-  GitFork, // Or FolderKanban if preferred for Link Groups
   FileText,
   Palette,
-  FolderKanban, // Added for consistency if chosen
+  FolderKanban,
 } from 'lucide-react';
-import { Button } from '@/components/ui/button';
+// import { Button } from '@/components/ui/button'; // Not used currently
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
+import { useEffect, useState } from 'react';
+import { getMockCurrentUserProfile } from '@/lib/mock-data';
+import type { UserProfile } from '@/types';
 
 interface AppSidebarProps {
-  inSheet?: boolean; // To adjust behavior when inside a Sheet (mobile menu)
+  inSheet?: boolean; 
 }
 
 
 export default function AppSidebar({ inSheet = false }: AppSidebarProps) {
   const pathname = usePathname();
+  const [currentUser, setCurrentUser] = useState<UserProfile | null>(null);
+
+  useEffect(() => {
+    setCurrentUser(getMockCurrentUserProfile());
+  }, []);
 
   const mainNavItems = [
     { href: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
@@ -67,11 +75,14 @@ export default function AppSidebar({ inSheet = false }: AppSidebarProps) {
     { label: 'Link Cloaking', icon: ShieldCheck, href: '/features/cloaking' },
     { label: 'Deep Linking', icon: MoveDiagonal, href: '/features/deeplinking' },
     { label: 'A/B Testing', icon: FlaskConical, href: '/features/ab-testing' },
-    { label: 'Link Groups', icon: FolderKanban, href: '/features/groups' }, // Changed to FolderKanban
+    { label: 'Link Groups', icon: FolderKanban, href: '/features/groups' }, 
     { label: 'Export Data', icon: FileText, href: '/features/export' },
   ];
   
   const commonSidebarProps = inSheet ? {variant: "sidebar", collapsible: "none"} : {variant: "sidebar", collapsible: "icon"};
+
+  const avatarFallbackName = currentUser?.fullName ? currentUser.fullName.substring(0, 2).toUpperCase() : "LW";
+  const avatarSeed = currentUser?.email || 'default-user-sidebar';
 
   return (
     <ShadSidebar {...commonSidebarProps} side="left">
@@ -158,12 +169,16 @@ export default function AppSidebar({ inSheet = false }: AppSidebarProps) {
       <SidebarFooter className="p-4 border-t border-sidebar-border group-data-[collapsible=icon]:p-2">
         <div className="flex items-center gap-3 group-data-[collapsible=icon]:justify-center">
             <Avatar className="h-9 w-9">
-                <AvatarImage src="https://picsum.photos/seed/user-sidebar/40/40" alt="User Avatar" data-ai-hint="profile avatar" />
-                <AvatarFallback>LW</AvatarFallback>
+                <AvatarImage 
+                  src={currentUser?.avatarUrl || `https://picsum.photos/seed/${avatarSeed}/40/40`} 
+                  alt={currentUser?.fullName || "User Avatar"}
+                  data-ai-hint={(currentUser?.avatarUrl && currentUser.avatarUrl.includes('picsum.photos')) || !currentUser?.avatarUrl ? "profile avatar" : undefined}
+                />
+                <AvatarFallback>{avatarFallbackName}</AvatarFallback>
             </Avatar>
             <div className="group-data-[collapsible=icon]:hidden">
-                <p className="text-sm font-medium text-sidebar-foreground">Current User</p>
-                <p className="text-xs text-sidebar-foreground/70">user@linkwiz.com</p>
+                <p className="text-sm font-medium text-sidebar-foreground">{currentUser?.fullName || "Current User"}</p>
+                <p className="text-xs text-sidebar-foreground/70">{currentUser?.email || "user@linkwiz.com"}</p>
             </div>
         </div>
       </SidebarFooter>
