@@ -1,8 +1,8 @@
-
 import Header from '@/components/layout/header';
 import AppSidebar from '@/components/layout/sidebar';
 import { SidebarProvider, SidebarInset } from '@/components/ui/sidebar';
-import { auth } from '@/lib/auth'; // Correct: Using auth from lib
+import { getServerSession } from 'next-auth/next'; // Import getServerSession
+import { authOptions } from '@/lib/auth'; // Import authOptions
 import { redirect } from 'next/navigation';
 
 export default async function AppLayout({
@@ -10,11 +10,11 @@ export default async function AppLayout({
 }: {
   children: React.ReactNode;
 }) {
-  const session = await auth(); // Correct: Using auth() to get session
+  const session = await getServerSession(authOptions); // Use getServerSession with authOptions
 
   if (!session) {
     redirect('/login'); 
-    return null; // Important: return null after redirect in Server Components
+    return null; 
   }
 
   return (

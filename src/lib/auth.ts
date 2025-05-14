@@ -1,12 +1,10 @@
-import NextAuth from "next-auth";
+import NextAuth, { type NextAuthOptions } from "next-auth"; // Ensure NextAuthOptions is imported
 import type { Adapter } from "next-auth/adapters";
 import type { User as NextAuthUser } from 'next-auth';
 import CredentialsProvider from 'next-auth/providers/credentials';
 import { UserModel } from '@/models/User';
 import bcrypt from 'bcryptjs';
-import { DB_TYPE, pool, clientPromise } from './db'; // Import clientPromise for MongoDB
-import PostgresAdapter from "@auth/pg-adapter";
-import { MongoDBAdapter } from "@auth/mongodb-adapter"; // Import MongoDBAdapter
+import { DB_TYPE, pool, clientPromise } from './db';
 
 let adapter: Adapter;
 
@@ -16,31 +14,49 @@ if (DB_TYPE === 'mongodb') {
     console.error(errorMessage);
     throw new Error(errorMessage);
   }
-  adapter = MongoDBAdapter(clientPromise, {
-    databaseName: process.env.MONGODB_DB_NAME || undefined,
-    collections: {
-      Users: "users",
-      Accounts: "accounts",
-      Sessions: "sessions",
-      VerificationTokens: "verification_tokens",
+  try {
+    const { MongoDBAdapter } = require("@next-auth/mongodb-adapter");
+    adapter = MongoDBAdapter(clientPromise, {
+      databaseName: process.env.MONGODB_DB_NAME || undefined,
+      collections: {
+        Users: "users",
+        Accounts: "accounts",
+        Sessions: "sessions",
+        VerificationTokens: "verification_tokens",
+      }
+    });
+    console.log("Using MongoDBAdapter for NextAuth.");
+  } catch (e: any) {
+    console.error("Failed to load MongoDBAdapter. If using MongoDB, ensure '@next-auth/mongodb-adapter' is installed.", e);
+    if (e.code === 'MODULE_NOT_FOUND') {
+      throw new Error("The '@next-auth/mongodb-adapter' package was not found. Please ensure it is installed correctly (check node_modules) and that 'npm install' completed without errors. Then restart the server.");
     }
-  });
-  console.log("Using MongoDBAdapter for NextAuth.");
+    throw new Error("MongoDBAdapter (v4) not found or failed to load. Please install '@next-auth/mongodb-adapter' if DB_TYPE is 'mongodb'.");
+  }
 } else if (DB_TYPE === 'postgres') {
   if (!pool) {
     const errorMessage = 'PostgreSQL pool is not initialized. Check lib/db.ts and .env file for POSTGRES_URI.';
     console.error(errorMessage);
     throw new Error(errorMessage);
   }
-  adapter = PostgresAdapter(pool);
-  console.log("Using PostgresAdapter for NextAuth.");
+  try {
+    const { PostgresAdapter } = require("@next-auth/pg-adapter");
+    adapter = PostgresAdapter(pool);
+    console.log("Using PostgresAdapter for NextAuth.");
+  } catch (e: any) {
+    console.error("Failed to load PgAdapter. If using PostgreSQL, ensure '@next-auth/pg-adapter' is installed.", e);
+     if (e.code === 'MODULE_NOT_FOUND') {
+      throw new Error("The '@next-auth/pg-adapter' package was not found. Please ensure it is installed correctly by checking your 'node_modules' folder and carefully review the output of 'npm install' for any errors related to this package. Then restart the server.");
+    }
+    throw new Error("PgAdapter (v4) not found or failed to load. Please install '@next-auth/pg-adapter' if DB_TYPE is 'postgres'.");
+  }
 } else {
   const errorMessage = 'Invalid DB_TYPE specified in .env file. Must be "mongodb" or "postgres". Auth adapter cannot be initialized.';
   console.error(errorMessage);
   throw new Error(errorMessage);
 }
 
-export const { handlers, auth, signIn, signOut } = NextAuth({
+export const authOptions: NextAuthOptions = { // Explicitly type authOptions
   adapter: adapter,
   providers: [
     CredentialsProvider({
@@ -55,7 +71,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
           return null;
         }
 
-        const user = await UserModel.findByEmail(credentials.email);
+        const user = await UserModel.findByEmail(credentials.email as string);
 
         if (!user) {
           console.log(`Auth: No user found for email ${credentials.email}`);
@@ -67,7 +83,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
             return null;
         }
 
-        const isPasswordValid = await bcrypt.compare(credentials.password, user.password);
+        const isPasswordValid = await bcrypt.compare(credentials.password as string, user.password);
 
         if (!isPasswordValid) {
           console.log(`Auth: Invalid password for user ${credentials.email}`);
@@ -75,10 +91,6 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         }
 
         console.log(`Auth: User ${credentials.email} authenticated successfully.`);
-        // Ensure the returned user object aligns with NextAuthUser expectations
-        // For MongoDB, user._id is an ObjectId. Adapter might handle it or expect a string.
-        // The UserModel.create already maps _id to id as a string, which is good.
-        // Ensure findByEmail returns id as a string if it's MongoDB.
         let userId = user.id;
         if (DB_TYPE === 'mongodb' && user._id && !user.id) {
             userId = user._id.toHexString();
@@ -89,7 +101,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
           name: user.name,
           email: user.email,
           image: user.image,
-        } as NextAuthUser;
+        } as NextAuthUser; // Cast to NextAuthUser
       },
     }),
   ],
@@ -97,13 +109,13 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
     strategy: 'jwt',
   },
   callbacks: {
-    async jwt({ token, user }) {
+    async jwt({ token, user }) { // Types are often inferred correctly here by NextAuthOptions
       if (user) {
         token.id = user.id;
       }
       return token;
     },
-    async session({ session, token }) {
+    async session({ session, token }) { // Types are often inferred correctly here by NextAuthOptions
       if (session.user && token.id) {
         (session.user as NextAuthUser & { id: string }).id = token.id as string;
       }
@@ -115,4 +127,12 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
   },
   secret: process.env.NEXTAUTH_SECRET,
   debug: process.env.NODE_ENV === 'development',
-});
+};
+
+// Remove the problematic line:
+// export const { handlers, auth, signIn, signOut } = NextAuth(authOptions);
+
+// We don't directly export handlers or auth, signIn, signOut from here in this v4 pattern.
+// The [...nextauth]/route.ts will create its own handler using NextAuth(authOptions).
+// signIn/signOut are typically used from 'next-auth/react' on client.
+// getServerSession is used for server-side session retrieval.
