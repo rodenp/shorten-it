@@ -5,7 +5,7 @@ import type { User as NextAuthUser } from 'next-auth';
 import CredentialsProvider from 'next-auth/providers/credentials';
 import { UserModel } from '@/models/User';
 import bcrypt from 'bcryptjs';
-import { DB_TYPE, pool, clientPromise } from './db';
+import { DB_TYPE, clientPromise, pool } from './db';
 
 let adapter: Adapter;
 
@@ -16,7 +16,7 @@ if (DB_TYPE === 'mongodb') {
     throw new Error(errorMessage);
   }
   try {
-    const { MongoDBAdapter } = require("@next-auth/mongodb-adapter");
+    const { MongoDBAdapter } = require("@auth/mongodb-adapter"); // Changed package
     adapter = MongoDBAdapter(clientPromise, {
       databaseName: process.env.MONGODB_DB_NAME || undefined,
       collections: {
@@ -26,13 +26,13 @@ if (DB_TYPE === 'mongodb') {
         VerificationTokens: "verification_tokens",
       }
     });
-    console.log("Using MongoDBAdapter (v4) for NextAuth.");
+    console.log("Using MongoDBAdapter (@auth/mongodb-adapter) for NextAuth.");
   } catch (e: any) {
-    console.error("Failed to load MongoDBAdapter. If using MongoDB, ensure '@next-auth/mongodb-adapter' is installed.", e);
+    console.error("Failed to load MongoDBAdapter. If using MongoDB, ensure '@auth/mongodb-adapter' is installed.", e);
     if (e.code === 'MODULE_NOT_FOUND') {
-      throw new Error("The '@next-auth/mongodb-adapter' package was not found. Please ensure it is installed correctly by checking your 'node_modules' folder and carefully review the output of 'npm install' for any errors related to this package. Then restart the server.");
+      throw new Error("The '@auth/mongodb-adapter' package was not found. Please ensure it is installed correctly by checking your 'node_modules' folder and carefully review the output of 'npm install' for any errors related to this package. Then restart the server.");
     }
-    throw new Error("MongoDBAdapter (v4) not found or failed to load. Please install '@next-auth/mongodb-adapter' if DB_TYPE is 'mongodb'.");
+    throw new Error("MongoDBAdapter (@auth/mongodb-adapter) not found or failed to load. Please install '@auth/mongodb-adapter' if DB_TYPE is 'mongodb'.");
   }
 } else if (DB_TYPE === 'postgres') {
   if (!pool) {
@@ -41,15 +41,15 @@ if (DB_TYPE === 'mongodb') {
     throw new Error(errorMessage);
   }
   try {
-    const { PostgresAdapter } = require("@next-auth/pg-adapter"); // Corrected to PostgresAdapter
-    adapter = PostgresAdapter(pool); // Using PostgresAdapter
-    console.log("Using PostgresAdapter (v4) for NextAuth.");
+    const { PgAdapter } = require("@auth/pg-adapter"); // Changed package and adapter name
+    adapter = PgAdapter(pool); // Using PgAdapter
+    console.log("Using PgAdapter (@auth/pg-adapter) for NextAuth.");
   } catch (e: any) {
-    console.error("Failed to load PostgresAdapter. If using PostgreSQL, ensure '@next-auth/pg-adapter' is installed.", e);
+    console.error("Failed to load PgAdapter. If using PostgreSQL, ensure '@auth/pg-adapter' is installed.", e);
      if (e.code === 'MODULE_NOT_FOUND') {
-      throw new Error("The '@next-auth/pg-adapter' package was not found. Please ensure it is installed correctly by checking your 'node_modules' folder and carefully review the output of 'npm install' for any errors related to this package. Then restart the server.");
+      throw new Error("The '@auth/pg-adapter' package was not found. Please ensure it is installed correctly by checking your 'node_modules' folder and carefully review the output of 'npm install' for any errors related to this package. Then restart the server.");
     }
-    throw new Error("PostgresAdapter (v4) not found or failed to load. Please install '@next-auth/pg-adapter' if DB_TYPE is 'postgres'.");
+    throw new Error("PgAdapter (@auth/pg-adapter) not found or failed to load. Please install '@auth/pg-adapter' if DB_TYPE is 'postgres'.");
   }
 } else {
   const errorMessage = 'Invalid DB_TYPE specified in .env file. Must be "mongodb" or "postgres". Auth adapter cannot be initialized.';
@@ -75,23 +75,23 @@ export const authOptions: NextAuthOptions = {
         const user = await UserModel.findByEmail(credentials.email as string);
 
         if (!user) {
-          console.log(`Auth: No user found for email ${credentials.email}`);
+          console.log(\`Auth: No user found for email \${credentials.email}\`);
           return null;
         }
 
         if (!user.password) {
-            console.log(`Auth: User ${credentials.email} has no password set (e.g. OAuth user).`);
+            console.log(\`Auth: User \${credentials.email} has no password set (e.g. OAuth user).\`);
             return null;
         }
 
         const isPasswordValid = await bcrypt.compare(credentials.password as string, user.password);
 
         if (!isPasswordValid) {
-          console.log(`Auth: Invalid password for user ${credentials.email}`);
+          console.log(\`Auth: Invalid password for user \${credentials.email}\`);
           return null;
         }
 
-        console.log(`Auth: User ${credentials.email} authenticated successfully.`);
+        console.log(\`Auth: User \${credentials.email} authenticated successfully.\`);
         let userId = user.id;
         if (DB_TYPE === 'mongodb' && user._id && !user.id) {
             userId = user._id.toHexString();
