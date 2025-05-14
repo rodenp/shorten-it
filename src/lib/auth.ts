@@ -4,43 +4,68 @@ import CredentialsProvider from 'next-auth/providers/credentials';
 import { UserModel, type User as AppUser } from '@/models/User'; // Ensure AppUser is imported
 import bcrypt from 'bcryptjs';
 import { DB_TYPE, clientPromise, pool } from './db';
-// Removed static imports for MongoDBAdapter and PgAdapter here
+// import { MongoDBAdapter } from "@next-auth/mongodb-adapter"; // v4 adapter name
+// import { PgAdapter } from "@next-auth/pg-adapter"; // v4 adapter name
 import type { Adapter } from 'next-auth/adapters';
 
 let adapter: Adapter;
 
 if (DB_TYPE === 'mongodb') {
   if (!clientPromise) {
-    throw new Error('MongoDB client promise is not initialized. Check lib/db.ts and .env file for MONGODB_URI.');
+    console.error('MongoDB client promise is not initialized. Check lib/db.ts and .env file for MONGODB_URI.');
+    throw new Error('MongoDB not configured for auth adapter. Ensure MONGODB_URI is set in .env and db.ts is correct.');
   }
   try {
-    const { MongoDBAdapter } = require("@auth/mongodb-adapter");
+    console.log("Attempting to load @next-auth/mongodb-adapter (v4)...");
+    const { MongoDBAdapter } = require("@next-auth/mongodb-adapter");
+    if (!MongoDBAdapter) {
+        throw new Error("MongoDBAdapter (v4) was not found in the @next-auth/mongodb-adapter module. This is unexpected.");
+    }
     adapter = MongoDBAdapter(clientPromise, {
-      databaseName: process.env.MONGODB_DB_NAME || undefined, // Optional: specify DB name if not in URI
+      databaseName: process.env.MONGODB_DB_NAME || undefined,
       collections: {
-        Users: "users", // Ensure this matches your User model collection name
+        Users: "users",
         Accounts: "accounts",
         Sessions: "sessions",
         VerificationTokens: "verification_tokens",
       }
     });
-  } catch (e) {
-    console.error("Failed to load MongoDBAdapter. Ensure '@auth/mongodb-adapter' is installed if using MongoDB.", e);
-    throw new Error("MongoDBAdapter not found. Please install '@auth/mongodb-adapter'.");
+    console.log("Successfully loaded and initialized MongoDBAdapter (v4) for NextAuth.");
+  } catch (e: any) {
+    console.error("Failed to load or initialize MongoDBAdapter. Original error:", e);
+    if (e.code === 'MODULE_NOT_FOUND') {
+        throw new Error("The '@next-auth/mongodb-adapter' package was not found. Please ensure it is installed correctly (check node_modules) and that 'npm install' completed without errors for this package. Then restart the server.");
+    }
+    throw new Error("MongoDBAdapter (v4) could not be loaded or initialized. Check server logs for the original error. Ensure '@next-auth/mongodb-adapter' is correctly installed.");
   }
 } else if (DB_TYPE === 'postgres') {
   if (!pool) {
-    throw new Error('PostgreSQL pool is not initialized. Check lib/db.ts and .env file for POSTGRES_URI.');
+    console.error('PostgreSQL pool is not initialized. Check lib/db.ts and .env file for POSTGRES_URI.');
+    throw new Error('PostgreSQL not configured for auth adapter. Ensure POSTGRES_URI is set in .env and db.ts is correct.');
   }
   try {
-    const { PgAdapter } = require("@auth/pg-adapter"); // Corrected import name
+    console.log("Attempting to load @next-auth/pg-adapter (v4)...");
+    const { PgAdapter } = require("@next-auth/pg-adapter");
+    if (!PgAdapter) {
+        throw new Error("PgAdapter (v4) was not found in the @next-auth/pg-adapter module. This is unexpected.");
+    }
     adapter = PgAdapter(pool);
-  } catch (e) {
-    console.error("Failed to load PgAdapter. Ensure '@auth/pg-adapter' is installed if using PostgreSQL.", e);
-    throw new Error("PgAdapter not found. Please install '@auth/pg-adapter'.");
+    console.log("Successfully loaded and initialized PgAdapter (v4) for NextAuth.");
+  } catch (e: any) {
+    console.error("Failed to load or initialize PgAdapter. Original error:", e);
+     if (e.code === 'MODULE_NOT_FOUND') {
+        throw new Error("The '@next-auth/pg-adapter' package was not found. Please ensure it is installed correctly by checking your 'node_modules' folder and carefully review the output of 'npm install' for any errors related to this package. Then restart the server.");
+    }
+    throw new Error("PgAdapter (v4) could not be loaded or initialized. Check server logs for the original error. Ensure '@next-auth/pg-adapter' is correctly installed.");
   }
 } else {
-  throw new Error('Invalid DB_TYPE. Must be "mongodb" or "postgres".');
+  console.error('Invalid DB_TYPE specified in .env file. Must be "mongodb" or "postgres". Auth adapter cannot be initialized.');
+  throw new Error('Invalid DB_TYPE for auth adapter. Must be "mongodb" or "postgres".');
+}
+
+if (!adapter) {
+  console.error(`Auth adapter could not be initialized for DB_TYPE: ${DB_TYPE}. This is an unexpected state. Ensure the correct adapter package is installed and resolvable.`);
+  throw new Error(`Auth adapter initialization failed for DB_TYPE: ${DB_TYPE}. Check .env configuration and ensure the corresponding '@next-auth/*' adapter package (v4) is installed and can be required by the application.`);
 }
 
 
@@ -68,7 +93,7 @@ export const authOptions: NextAuthOptions = {
 
         if (!user.password) {
             console.log(`Auth: User ${credentials.email} has no password set (e.g. OAuth user).`);
-            return null; // User might exist from OAuth, but has no password
+            return null;
         }
 
         const isPasswordValid = await bcrypt.compare(credentials.password, user.password);
@@ -77,33 +102,28 @@ export const authOptions: NextAuthOptions = {
           console.log(`Auth: Invalid password for user ${credentials.email}`);
           return null;
         }
-        
+
         console.log(`Auth: User ${credentials.email} authenticated successfully.`);
-        // Return an object that NextAuth expects for the user session
-        // The adapter handles mapping DB fields to NextAuth user fields for session/JWT
         return {
           id: DB_TYPE === 'mongodb' ? user._id!.toHexString() : user.id!,
           name: user.name,
           email: user.email,
           image: user.image,
-        } as NextAuthUser; // Cast to NextAuthUser
+        } as NextAuthUser;
       },
     }),
-    // ...add more providers here (e.g., GoogleProvider, GitHubProvider)
   ],
   session: {
-    strategy: 'jwt', // Use JWT for session strategy. Database sessions are managed by the adapter.
+    strategy: 'jwt',
   },
   callbacks: {
     async jwt({ token, user }) {
-      // If user object exists (on sign in), add user ID to token
       if (user) {
-        token.id = user.id; 
+        token.id = user.id;
       }
       return token;
     },
     async session({ session, token }) {
-      // Add user ID from token to session object
       if (session.user && token.id) {
         (session.user as NextAuthUser & { id: string }).id = token.id as string;
       }
@@ -112,11 +132,11 @@ export const authOptions: NextAuthOptions = {
   },
   pages: {
     signIn: '/login',
-    // signOut: '/auth/signout', // default
+    // signOut: '/auth/signout', // Optional: custom signout page
     // error: '/auth/error', // Error code passed in query string as ?error=
-    // verifyRequest: '/auth/verify-request', // (e.g. check your email)
-    // newUser: '/auth/new-user' // New users will be directed here on first sign in (leave the property out to disable)
+    // verifyRequest: '/auth/verify-request', // (used for email/passwordless login)
+    // newUser: '/auth/new-user' // New users will be directed here on first sign in (leave undefined to redirect to /)
   },
-  secret: process.env.NEXTAUTH_SECRET, // Crucial for production
-  debug: process.env.NODE_ENV === 'development', // Enable debug messages in development
+  secret: process.env.NEXTAUTH_SECRET,
+  debug: process.env.NODE_ENV === 'development',
 };
