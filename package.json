@@ -57,7 +57,7 @@
     "next-auth": "^4.24.7",
     "bcryptjs": "^2.4.3",
     "@auth/mongodb-adapter": "^3.9.1",
-    "@auth/pg-adapter": "^1.9.1",
+    "@auth/pg-adapter": "1.9.1",
     "pg": "^8.12.0",
     "mongodb": "^6.0.0"
   },

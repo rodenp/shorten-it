@@ -16,7 +16,7 @@ if (DB_TYPE === 'mongodb') {
     throw new Error(errorMessage);
   }
   try {
-    const { MongoDBAdapter } = require("@auth/mongodb-adapter"); // Changed package
+    const { MongoDBAdapter } = require("@auth/mongodb-adapter");
     adapter = MongoDBAdapter(clientPromise, {
       databaseName: process.env.MONGODB_DB_NAME || undefined,
       collections: {
@@ -41,8 +41,8 @@ if (DB_TYPE === 'mongodb') {
     throw new Error(errorMessage);
   }
   try {
-    const { PgAdapter } = require("@auth/pg-adapter"); // Changed package and adapter name
-    adapter = PgAdapter(pool); // Using PgAdapter
+    const { PgAdapter } = require("@auth/pg-adapter");
+    adapter = PgAdapter(pool);
     console.log("Using PgAdapter (@auth/pg-adapter) for NextAuth.");
   } catch (e: any) {
     console.error("Failed to load PgAdapter. If using PostgreSQL, ensure '@auth/pg-adapter' is installed.", e);
@@ -75,23 +75,23 @@ export const authOptions: NextAuthOptions = {
         const user = await UserModel.findByEmail(credentials.email as string);
 
         if (!user) {
-          console.log(\`Auth: No user found for email \${credentials.email}\`);
+          console.log(`Auth: No user found for email ${credentials.email}`);
           return null;
         }
 
         if (!user.password) {
-            console.log(\`Auth: User \${credentials.email} has no password set (e.g. OAuth user).\`);
+            console.log(`Auth: User ${credentials.email} has no password set (e.g. OAuth user).`);
             return null;
         }
 
         const isPasswordValid = await bcrypt.compare(credentials.password as string, user.password);
 
         if (!isPasswordValid) {
-          console.log(\`Auth: Invalid password for user \${credentials.email}\`);
+          console.log(`Auth: Invalid password for user ${credentials.email}`);
           return null;
         }
 
-        console.log(\`Auth: User \${credentials.email} authenticated successfully.\`);
+        console.log(`Auth: User ${credentials.email} authenticated successfully.`);
         let userId = user.id;
         if (DB_TYPE === 'mongodb' && user._id && !user.id) {
             userId = user._id.toHexString();
