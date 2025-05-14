@@ -11,9 +11,6 @@ import {
   SidebarMenu,
   SidebarMenuItem,
   SidebarMenuButton,
-  // SidebarMenuSub, // Not used currently
-  // SidebarMenuSubItem, // Not used currently
-  // SidebarMenuSubButton, // Not used currently
   SidebarSeparator,
   SidebarGroup,
   SidebarGroupLabel,
@@ -36,11 +33,8 @@ import {
   Palette,
   FolderKanban,
 } from 'lucide-react';
-// import { Button } from '@/components/ui/button'; // Not used currently
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
-import { useEffect, useState } from 'react';
-import { getMockCurrentUserProfile } from '@/lib/mock-data';
-import type { UserProfile } from '@/types';
+import { useSession } from 'next-auth/react'; // Import useSession
 
 interface AppSidebarProps {
   inSheet?: boolean; 
@@ -49,11 +43,7 @@ interface AppSidebarProps {
 
 export default function AppSidebar({ inSheet = false }: AppSidebarProps) {
   const pathname = usePathname();
-  const [currentUser, setCurrentUser] = useState<UserProfile | null>(null);
-
-  useEffect(() => {
-    setCurrentUser(getMockCurrentUserProfile());
-  }, []);
+  const { data: session, status } = useSession(); // Get session data
 
   const mainNavItems = [
     { href: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
@@ -81,8 +71,34 @@ export default function AppSidebar({ inSheet = false }: AppSidebarProps) {
   
   const commonSidebarProps = inSheet ? {variant: "sidebar", collapsible: "none"} : {variant: "sidebar", collapsible: "icon"};
 
-  const avatarFallbackName = currentUser?.fullName ? currentUser.fullName.substring(0, 2).toUpperCase() : "LW";
-  const avatarSeed = currentUser?.email || 'default-user-sidebar';
+  const avatarFallbackName = session?.user?.name 
+    ? session.user.name.substring(0, 2).toUpperCase() 
+    : session?.user?.email?.substring(0,2).toUpperCase() || "LW";
+  const avatarSeed = session?.user?.email || 'default-user-sidebar';
+  const userDisplayName = session?.user?.name || session?.user?.email || "Current User";
+  const userDisplayEmail = session?.user?.email || "user@linkwiz.com";
+
+
+  if (status === 'loading') {
+    // Optional: render a loading state for the sidebar
+    return (
+       <ShadSidebar {...commonSidebarProps} side="left">
+         <SidebarHeader className="p-4 border-b border-sidebar-border">
+           {/* Skeleton or loading indicator for header */}
+         </SidebarHeader>
+         <SidebarContent className="flex-grow p-2 space-y-1">
+            {/* Skeleton or loading indicator for content */}
+         </SidebarContent>
+          <SidebarFooter className="p-4 border-t border-sidebar-border group-data-[collapsible=icon]:p-2">
+            {/* Skeleton or loading indicator for footer */}
+          </SidebarFooter>
+       </ShadSidebar>
+    );
+  }
+  
+  // If not authenticated, or session is null (though middleware should prevent this for /app routes)
+  // you might choose to render nothing or a minimal sidebar.
+  // For this example, we assume middleware handles redirection and session will be present.
 
   return (
     <ShadSidebar {...commonSidebarProps} side="left">
@@ -170,18 +186,19 @@ export default function AppSidebar({ inSheet = false }: AppSidebarProps) {
         <div className="flex items-center gap-3 group-data-[collapsible=icon]:justify-center">
             <Avatar className="h-9 w-9">
                 <AvatarImage 
-                  src={currentUser?.avatarUrl || `https://picsum.photos/seed/${avatarSeed}/40/40`} 
-                  alt={currentUser?.fullName || "User Avatar"}
-                  data-ai-hint={(currentUser?.avatarUrl && currentUser.avatarUrl.includes('picsum.photos')) || !currentUser?.avatarUrl ? "profile avatar" : undefined}
+                  src={session?.user?.image || `https://picsum.photos/seed/${avatarSeed}/40/40`} 
+                  alt={session?.user?.name || "User Avatar"}
+                  data-ai-hint={(!session?.user?.image || session.user.image.includes('picsum.photos')) ? "profile avatar" : undefined}
                 />
                 <AvatarFallback>{avatarFallbackName}</AvatarFallback>
             </Avatar>
             <div className="group-data-[collapsible=icon]:hidden">
-                <p className="text-sm font-medium text-sidebar-foreground">{currentUser?.fullName || "Current User"}</p>
-                <p className="text-xs text-sidebar-foreground/70">{currentUser?.email || "user@linkwiz.com"}</p>
+                <p className="text-sm font-medium text-sidebar-foreground">{userDisplayName}</p>
+                <p className="text-xs text-sidebar-foreground/70">{userDisplayEmail}</p>
             </div>
         </div>
       </SidebarFooter>
     </ShadSidebar>
   );
 }
+
