@@ -6,6 +6,8 @@ import CredentialsProvider from 'next-auth/providers/credentials';
 import { UserModel } from '@/models/User';
 import bcrypt from 'bcryptjs';
 import { DB_TYPE, clientPromise, pool } from './db';
+import { MongoDBAdapter } from "@auth/mongodb-adapter";
+import PgAdapter from "@auth/pg-adapter";
 
 let adapter: Adapter;
 
@@ -16,7 +18,6 @@ if (DB_TYPE === 'mongodb') {
     throw new Error(errorMessage);
   }
   try {
-    const { MongoDBAdapter } = require("@auth/mongodb-adapter");
     adapter = MongoDBAdapter(clientPromise, {
       databaseName: process.env.MONGODB_DB_NAME || undefined,
       collections: {
@@ -41,7 +42,6 @@ if (DB_TYPE === 'mongodb') {
     throw new Error(errorMessage);
   }
   try {
-    const { PgAdapter } = require("@auth/pg-adapter");
     adapter = PgAdapter(pool);
     console.log("Using PgAdapter (@auth/pg-adapter) for NextAuth.");
   } catch (e: any) {
