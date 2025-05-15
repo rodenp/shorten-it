@@ -4,11 +4,29 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { LockKeyhole } from 'lucide-react';
 import type { Metadata } from 'next';
 import Link from 'next/link';
+import React from 'react'; // Import React for Suspense
 
 export const metadata: Metadata = {
   title: 'Login - LinkWiz',
   description: 'Log in to your LinkWiz account.',
 };
+
+// A simple loading skeleton for the form
+function LoginFormSkeleton() {
+  return (
+    <div className="space-y-6">
+      <div className="space-y-2">
+        <div className="h-4 bg-gray-200 rounded w-1/4 animate-pulse"></div>
+        <div className="h-10 bg-gray-200 rounded w-full animate-pulse"></div>
+      </div>
+      <div className="space-y-2">
+        <div className="h-4 bg-gray-200 rounded w-1/4 animate-pulse"></div>
+        <div className="h-10 bg-gray-200 rounded w-full animate-pulse"></div>
+      </div>
+      <div className="h-10 bg-gray-300 rounded w-full animate-pulse"></div>
+    </div>
+  );
+}
 
 export default function LoginPage() {
   return (
@@ -22,7 +40,9 @@ export default function LoginPage() {
           <CardDescription>Sign in to access your LinkWiz dashboard.</CardDescription>
         </CardHeader>
         <CardContent>
-          <LoginForm />
+          <React.Suspense fallback={<LoginFormSkeleton />}>
+            <LoginForm />
+          </React.Suspense>
           <p className="mt-6 text-center text-sm text-muted-foreground">
             Don&apos;t have an account?{' '}
             <Link href="/register" className="font-medium text-primary hover:underline">

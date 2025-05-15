@@ -2,7 +2,7 @@
 import { pool, DB_TYPE } from './db';
 import { LinkItem, LinkTarget, RetargetingPixel } from '@/types';
 import { v4 as uuidv4 } from 'uuid';
-import { getShortenerDomain } from './mock-data'; // Temporary for shortUrl generation logic
+import { getShortenerDomain } from './mock-data'; // Used for shortUrl generation logic
 
 if (DB_TYPE !== 'postgres' || !pool) {
   console.warn('Link service currently only supports PostgreSQL. DB_TYPE is set to:', DB_TYPE);
@@ -87,7 +87,6 @@ export async function getLinkById(id: string, userId: string): Promise<LinkItem 
 export async function getLinkBySlug(slug: string, userId: string): Promise<LinkItem | null> {
   if (DB_TYPE !== 'postgres' || !pool) throw new Error('PostgreSQL not configured');
   try {
-    // Query by slug and userId. If slugs are unique per domain, you might need to add a customDomainId condition.
     const query = `
         SELECT l.*, 
                cd."domainName" as "customDomainName",
@@ -97,14 +96,11 @@ export async function getLinkBySlug(slug: string, userId: string): Promise<LinkI
         LEFT JOIN link_groups lg ON l."groupId" = lg.id AND lg."userId" = l."userId"
         WHERE l.slug = $1 AND l."userId" = $2; 
     `; 
-    // If slugs are only unique in the context of a specific custom domain OR the default domain,
-    // the query would be more complex, potentially needing to check for customDomainId OR customDomainId IS NULL.
-    // For now, this assumes slug is unique enough when combined with userId.
     const res = await pool.query(query, [slug, userId]);
     if (res.rows.length === 0) return null;
     
     const linkRow = res.rows[0];
-    const pixels = await getRetargetingPixelsForLink(linkRow.id); // Use the actual ID of the found link
+    const pixels = await getRetargetingPixelsForLink(linkRow.id);
     let link = formatLinkItem(linkRow, pixels);
 
     if (link.customDomain) {
@@ -117,6 +113,65 @@ export async function getLinkBySlug(slug: string, userId: string): Promise<LinkI
   } catch (err) {
     console.error('Error fetching link by slug:', err);
     throw new Error('Failed to retrieve link by slug.');
+  }
+}
+
+// New function for middleware to fetch a link for redirection
+export async function getLinkBySlugAndDomain(slug: string, domain: string): Promise<LinkItem | null> {
+  if (DB_TYPE !== 'postgres' || !pool) {
+    console.error('PostgreSQL not configured for link redirection lookup.');
+    return null; // Avoid throwing error in middleware path
+  }
+  try {
+    let query;
+    let queryParams;
+    const defaultShortenerDomain = getShortenerDomain(); // From mock-data, ensure this is correct for your setup
+
+    if (domain === defaultShortenerDomain) {
+      // Link is on the default domain, customDomainId should be NULL
+      query = `
+        SELECT l.*, 
+               NULL as "customDomainName" 
+        FROM links l
+        WHERE l.slug = $1 AND l."customDomainId" IS NULL; 
+      `;
+      // Note: We are not checking userId here as short links are public.
+      // If links on the default domain can also belong to specific users and this needs to be enforced,
+      // this query would need adjustment or rely on customDomainId always being set for custom domains.
+      queryParams = [slug];
+    } else {
+      // Link is on a custom domain
+      query = `
+        SELECT l.*, 
+               cd."domainName" as "customDomainName"
+        FROM links l
+        JOIN custom_domains cd ON l."customDomainId" = cd.id
+        WHERE l.slug = $1 AND cd."domainName" = $2 AND cd.verified = TRUE; 
+      `; 
+      // Assuming custom domains must be verified to be active for redirection
+      // Also not checking l."userId" here as custom domain links are typically public once set up.
+      queryParams = [slug, domain];
+    }
+
+    const res = await pool.query(query, queryParams);
+    if (res.rows.length === 0) return null;
+    
+    const linkRow = res.rows[0];
+    // Middleware doesn't need pixels for redirection, pass empty array
+    // The targets field is important for A/B tests or rotation
+    let link = formatLinkItem(linkRow, []); 
+
+    // Ensure shortUrl is correctly formatted based on context (though less critical for redirect logic itself)
+    if (link.customDomain) {
+        link.shortUrl = `https://${link.customDomain}/${link.slug}`;
+    } else {
+        link.shortUrl = `https://${defaultShortenerDomain}/${link.slug}`;
+    }
+    return link;
+
+  } catch (err) {
+    console.error(`Error fetching link by slug '${slug}' and domain '${domain}':`, err);
+    return null; // Important: Don't throw errors that would break all requests via middleware
   }
 }
 
@@ -168,7 +223,6 @@ const generateDbSlug = async (customDomainId?: string): Promise<string> => {
   let res = await pool.query(query, params);
   while (res.rows.length > 0) {
     slug = Math.random().toString(36).substring(2, 8);
-    // Re-assign params with the new slug for the next check
     if (customDomainId) params = [slug, customDomainId];
     else params = [slug];
     res = await pool.query(query, params);
@@ -247,9 +301,8 @@ export async function createLink(data: CreateLinkData): Promise<LinkItem> {
 
     const res = await client.query(linkQuery, linkParams);
     let newLinkRow = res.rows[0];
-    newLinkRow.customDomainName = customDomainName; // Add for formatLinkItem
+    newLinkRow.customDomainName = customDomainName; 
 
-    // Fetch groupName if groupId exists
     if (newLinkRow.groupId) {
         const groupRes = await client.query('SELECT name FROM link_groups WHERE id = $1 AND "userId" = $2', [newLinkRow.groupId, data.userId]);
         if (groupRes.rows.length > 0) {
@@ -328,7 +381,7 @@ export async function updateLink(linkId: string, userId: string, updates: Partia
         }
                 
         if (updates.retargetingPixelIds !== undefined) {
-            needsDbUpdate = true; // Mark that an update happened even if only pixels changed
+            needsDbUpdate = true; 
             await client.query('DELETE FROM link_retargeting_pixels WHERE "linkId" = $1', [linkId]);
             if (updates.retargetingPixelIds.length > 0) {
                 for (const pixelId of updates.retargetingPixelIds) {
@@ -338,8 +391,7 @@ export async function updateLink(linkId: string, userId: string, updates: Partia
                     );
                 }
             }
-             // If only pixels changed, we still need to mark updatedAt on the main link for consistency
-            if (setClauses.length === 0) { // only pixels changed, no other fields from updatableFields
+            if (setClauses.length === 0) { 
                  await client.query('UPDATE links SET "updatedAt" = CURRENT_TIMESTAMP WHERE id = $1 AND "userId" = $2', [linkId, userId]);
             }
         }
@@ -347,7 +399,7 @@ export async function updateLink(linkId: string, userId: string, updates: Partia
         if (!needsDbUpdate) {
              await client.query('ROLLBACK');
              client.release();
-             return getLinkById(linkId, userId); // Return existing if no actual changes were made
+             return getLinkById(linkId, userId); 
         }
 
         await client.query('COMMIT');
@@ -383,7 +435,6 @@ export async function deleteLink(id: string, userId: string): Promise<boolean> {
   try {
     await client.query('BEGIN');
     await client.query('DELETE FROM link_retargeting_pixels WHERE "linkId" = $1', [id]);
-    // Delete analytic events associated with the link
     await client.query('DELETE FROM analytic_events WHERE "linkId" = $1', [id]);
 
     const res = await client.query('DELETE FROM links WHERE id = $1 AND "userId" = $2', [id, userId]);
@@ -403,10 +454,15 @@ export async function deleteLink(id: string, userId: string): Promise<boolean> {
 }
 
 export async function incrementLinkClickCount(linkId: string): Promise<void> {
-    if (DB_TYPE !== 'postgres' || !pool) throw new Error('PostgreSQL not configured');
+    if (DB_TYPE !== 'postgres' || !pool) {
+        console.error('PostgreSQL not configured for incrementing click count.');
+        return;
+    }
     try {
         await pool.query('UPDATE links SET "clickCount" = "clickCount" + 1, "updatedAt" = CURRENT_TIMESTAMP WHERE id = $1', [linkId]);
     } catch (err) {
-        console.error('Error incrementing click count:', err);
+        console.error('Error incrementing click count for linkId ' + linkId + ':', err);
+        // Do not throw error, as this is often a fire-and-forget operation
     }
 }
+
