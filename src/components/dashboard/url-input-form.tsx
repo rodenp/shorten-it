@@ -22,11 +22,24 @@ import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/
 import { Switch } from '@/components/ui/switch';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Shuffle, ShieldCheck, MoveDiagonal, FlaskConical, Target, Tag, Settings2, Link as LinkIcon, Globe, Percent, FolderKanban } from 'lucide-react';
-import { addMockLink, getMockCustomDomains, getMockLinkGroups, getShortenerDomain, getMockRetargetingPixels } from '@/lib/mock-data';
-import type { CustomDomain, LinkGroup, RetargetingPixel } from '@/types';
+import { getShortenerDomain } from '@/lib/mock-data'; 
+import type { CustomDomain, LinkGroup, RetargetingPixel, LinkTarget, LinkItem } from '@/types';
 import { useEffect, useState } from 'react';
 import { Slider } from '@/components/ui/slider';
 
+interface CreateLinkPayload {
+  originalUrl: string;
+  targets: LinkTarget[];
+  slug?: string;
+  title?: string;
+  tags?: string[];
+  isCloaked?: boolean;
+  customDomainId?: string;
+  groupId?: string;
+  deepLinkConfig?: LinkItem['deepLinkConfig'];
+  abTestConfig?: LinkItem['abTestConfig'];
+  retargetingPixelIds?: string[];
+}
 
 const urlInputFormSchema = z.object({
   urls: z.string().min(1, { message: 'Please enter at least one URL for Variant A or for rotation.' })
@@ -47,7 +60,7 @@ const urlInputFormSchema = z.object({
   title: z.string().optional(),
   tags: z.string().optional(),
   groupId: z.string().optional(),
-  customDomain: z.string().optional(),
+  customDomainId: z.string().optional(),
   enableRotation: z.boolean().default(false).optional(),
   enableCloaking: z.boolean().default(false).optional(),
   enableDeepLinking: z.boolean().default(false).optional(),
@@ -66,7 +79,7 @@ const urlInputFormSchema = z.object({
   }, { message: 'Variant B URL is invalid. Please enter a valid URL.' }),
   abTestSplitPercentage: z.number().min(0).max(100).default(50).optional(),
   enableRetargeting: z.boolean().default(false).optional(),
-  selectedRetargetingPixelId: z.string().optional(), // Stores the ID of the selected RetargetingPixel
+  selectedRetargetingPixelId: z.string().optional(),
 }).refine(data => {
   if (data.enableABTesting && !data.abTestVariantBUrl) {
     return false;
@@ -93,7 +106,6 @@ const urlInputFormSchema = z.object({
     path: ["enableABTesting"], 
 });
 
-
 type UrlInputFormValues = z.infer<typeof urlInputFormSchema>;
 
 const defaultValues: Partial<UrlInputFormValues> = {
@@ -113,7 +125,7 @@ const defaultValues: Partial<UrlInputFormValues> = {
   title: '',
   tags: '',
   groupId: 'none',
-  customDomain: 'default',
+  customDomainId: 'default',
 };
 
 interface UrlInputFormProps {
@@ -122,7 +134,7 @@ interface UrlInputFormProps {
 
 export function UrlInputForm({ onLinkAdded }: UrlInputFormProps) {
   const { toast } = useToast();
-  const [verifiedDomains, setVerifiedDomains] = useState<CustomDomain[]>([]);
+  const [customDomains, setCustomDomains] = useState<CustomDomain[]>([]);
   const [linkGroups, setLinkGroups] = useState<LinkGroup[]>([]);
   const [retargetingPixels, setRetargetingPixels] = useState<RetargetingPixel[]>([]);
   const form = useForm<UrlInputFormValues>({
@@ -130,119 +142,136 @@ export function UrlInputForm({ onLinkAdded }: UrlInputFormProps) {
     defaultValues,
     mode: 'onChange',
   });
-  const [shortenerDomainState, setShortenerDomainState] = useState('linkwiz.dev');
-
+  const [globalShortenerDomain, setGlobalShortenerDomain] = useState('your.domain');
 
   useEffect(() => {
-    setVerifiedDomains(getMockCustomDomains().filter(d => d.verified));
-    setShortenerDomainState(getShortenerDomain());
-    setLinkGroups(getMockLinkGroups());
-    setRetargetingPixels(getMockRetargetingPixels());
-  }, []);
+    setGlobalShortenerDomain(getShortenerDomain());
+
+    const fetchData = async () => {
+      try {
+        const [domainsRes, groupsRes, pixelsRes] = await Promise.all([
+          fetch('/api/custom-domains'),
+          fetch('/api/link-groups'),
+          fetch('/api/retargeting-pixels')
+        ]);
+
+        if (domainsRes.ok) {
+          const domainsData = await domainsRes.json();
+          setCustomDomains(domainsData.filter((d: CustomDomain) => d.verified));
+        } else {
+          console.error('Failed to fetch custom domains');
+        }
+        if (groupsRes.ok) {
+          setLinkGroups(await groupsRes.json());
+        } else {
+          console.error('Failed to fetch link groups');
+        }
+        if (pixelsRes.ok) {
+          setRetargetingPixels(await pixelsRes.json());
+        } else {
+          console.error('Failed to fetch retargeting pixels');
+        }
+      } catch (error) {
+        console.error('Error fetching initial data for form:', error);
+        toast({ title: 'Error', description: 'Could not load necessary data for the form.', variant: 'destructive' });
+      }
+    };
+    fetchData();
+  }, [toast]);
 
   async function onSubmit(data: UrlInputFormValues) {
-    await new Promise(resolve => setTimeout(resolve, 300));
-
-    const urlList = data.urls.split('\n').map(url => {
+    const urlLines = data.urls.split('\n').map(url => {
       let trimmedUrl = url.trim();
-      if (!trimmedUrl.startsWith('http://') && !trimmedUrl.startsWith('https://')) {
+      if (trimmedUrl && !trimmedUrl.startsWith('http://') && !trimmedUrl.startsWith('https://')) {
         trimmedUrl = `https://${trimmedUrl}`;
       }
       return trimmedUrl;
     }).filter(Boolean);
 
-
-    if (urlList.length === 0) {
-      toast({
-        title: 'No URLs Provided',
-        description: 'Please enter at least one URL for Variant A or for rotation.',
-        variant: 'destructive',
-      });
+    if (urlLines.length === 0) {
+      toast({ title: 'No URLs Provided', description: 'Please enter at least one URL.', variant: 'destructive' });
       return;
     }
-    
-    let createdCount = 0;
-    let errorMessages: string[] = [];
 
-    const selectedCustomDomainName = data.customDomain === 'default' ? undefined : data.customDomain;
-    const selectedGroupIdValue = data.groupId === 'none' ? undefined : data.groupId;
-    const selectedPixelId = data.selectedRetargetingPixelId === 'none' ? undefined : data.selectedRetargetingPixelId;
-
-
-    const commonPropsForAddMockLink: Omit<Parameters<typeof addMockLink>[0], 'destinationUrls' | 'isRotation' | 'isABTest' | 'variantBUrl' | 'abTestSplitPercentage'> = {
-      title: data.title,
-      tags: data.tags,
+    const payload: Partial<CreateLinkPayload> = {
+      title: data.title || undefined,
+      slug: data.customAlias || undefined,
+      tags: data.tags ? data.tags.split(',').map(t => t.trim()).filter(Boolean) : undefined,
       isCloaked: data.enableCloaking,
-      deepLinkIOSAppUriScheme: data.enableDeepLinking ? data.deepLinkIOS : undefined,
-      deepLinkAndroidAppUriScheme: data.enableDeepLinking ? data.deepLinkAndroid : undefined,
-      deepLinkFallbackUrl: data.enableDeepLinking ? data.deepLinkFallbackUrl : undefined,
-      selectedRetargetingPixelId: data.enableRetargeting ? selectedPixelId : undefined,
-      customDomain: selectedCustomDomainName,
-      groupId: selectedGroupIdValue,
+      customDomainId: data.customDomainId === 'default' ? undefined : data.customDomainId,
+      groupId: data.groupId === 'none' ? undefined : data.groupId,
+      retargetingPixelIds: data.enableRetargeting && data.selectedRetargetingPixelId !== 'none' ? [data.selectedRetargetingPixelId as string] : undefined,
     };
 
-    try {
-      if (data.enableABTesting && urlList.length > 0 && data.abTestVariantBUrl) {
-         let variantB = data.abTestVariantBUrl.trim();
-         if (!variantB.startsWith('http://') && !variantB.startsWith('https://')) {
-            variantB = `https://${variantB}`;
-         }
-        addMockLink({
-          destinationUrls: [urlList[0]], 
-          variantBUrl: variantB,
-          isABTest: true,
-          isRotation: false, 
-          customAlias: data.customAlias,
-          abTestSplitPercentage: data.abTestSplitPercentage,
-          ...commonPropsForAddMockLink,
-        });
-        createdCount = 1; 
-      } else if (data.enableRotation && urlList.length > 1) {
-        addMockLink({
-          destinationUrls: urlList,
-          isRotation: true,
-          isABTest: false,
-          customAlias: data.customAlias,
-          ...commonPropsForAddMockLink,
-        });
-        createdCount = 1;
-      } else {
-        urlList.forEach((url, index) => {
-          const isFirstUrlInBatch = index === 0;
-          const applyCustomAlias = isFirstUrlInBatch ? data.customAlias : undefined;
-          
-          addMockLink({
-            destinationUrls: [url],
-            isRotation: false,
-            isABTest: false,
-            customAlias: applyCustomAlias,
-            ...commonPropsForAddMockLink,
-          });
-          createdCount++;
-        });
+    if (data.enableDeepLinking) {
+      payload.deepLinkConfig = {
+        iosAppUriScheme: data.deepLinkIOS || '',
+        androidAppUriScheme: data.deepLinkAndroid || '',
+        fallbackUrl: data.deepLinkFallbackUrl || undefined,
+      };
+    }
+    
+    let primaryUrl = urlLines[0];
+    let linkTargets: LinkTarget[] = [];
+
+    if (data.enableABTesting && data.abTestVariantBUrl) {
+      let variantB = data.abTestVariantBUrl.trim();
+      if (variantB && !variantB.startsWith('http://') && !variantB.startsWith('https://')) {
+        variantB = `https://${variantB}`;
       }
-    } catch (e: any) {
-        errorMessages.push(e.message || "An unexpected error occurred while creating links.");
+      payload.abTestConfig = {
+        variantAUrl: primaryUrl,
+        variantBUrl: variantB,
+        splitPercentage: data.abTestSplitPercentage || 50,
+      };
+      linkTargets = [
+        { url: primaryUrl, weight: data.abTestSplitPercentage || 50 },
+        { url: variantB, weight: 100 - (data.abTestSplitPercentage || 50) },
+      ];
+    } else if (data.enableRotation && urlLines.length > 0) {
+      const numUrls = urlLines.length;
+      let baseWeight = Math.floor(100 / numUrls);
+      let remainder = 100 % numUrls;
+      linkTargets = urlLines.map((url, index) => {
+        let weight = baseWeight + (index < remainder ? 1 : 0);
+        return { url, weight };
+      });
+      primaryUrl = urlLines[0]; // This will be the originalUrl even in rotation mode
+    } else {
+      linkTargets = [{ url: primaryUrl, weight: 100 }];
     }
 
-    if (createdCount > 0) {
+    payload.originalUrl = primaryUrl;
+    payload.targets = linkTargets;
+
+    // Log the payload just before sending
+    console.log("Payload being sent to /api/links:", JSON.stringify(payload, null, 2));
+
+    try {
+      const response = await fetch('/api/links', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+
+      const result = await response.json();
+
+      if (!response.ok) {
+        throw new Error(result.message || 'Failed to create link.');
+      }
+
       toast({
-        title: `${createdCount} Link${createdCount > 1 ? 's' : ''} Created!`,
-        description: `Successfully generated ${createdCount} short link${createdCount > 1 ? 's' : ''}.`,
+        title: 'Link Created!',
+        description: `Successfully generated: ${result.shortUrl}`,
         variant: 'default',
       });
-      form.reset(); 
+      form.reset(defaultValues); 
       onLinkAdded?.();
-    } else if (errorMessages.length > 0) {
-       toast({
-        title: 'Failed to Create Links',
-        description: errorMessages.join(' '),
-        variant: 'destructive',
-      });
-    } else if (urlList.length > 0){
-       toast({
-        title: 'No Links Created',
-        description: 'Could not create any links. Please check your input and try again.',
+
+    } catch (error: any) {
+      toast({
+        title: 'Error Creating Link',
+        description: error.message,
         variant: 'destructive',
       });
     }
@@ -251,14 +280,17 @@ export function UrlInputForm({ onLinkAdded }: UrlInputFormProps) {
   const enableRotation = form.watch('enableRotation');
   const enableABTesting = form.watch('enableABTesting');
 
+  // Also update the Zod schema to split by newline for validation
+  // (This was already correct in your provided code for refine, just re-stating for completeness)
+
   return (
     <Card className="w-full shadow-lg">
       <CardHeader>
         <CardTitle className="flex items-center text-2xl">
           <LinkIcon className="mr-2 h-6 w-6 text-primary" />
-          Create New Links
+          Create New Link
         </CardTitle>
-        <CardDescription>Enter URLs to shorten and configure advanced options.</CardDescription>
+        <CardDescription>Enter a URL to shorten and configure advanced options. For multiple URLs without rotation/A/B testing, only the first will be used.</CardDescription>
       </CardHeader>
       <Form {...form}>
         <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-0">
@@ -269,21 +301,24 @@ export function UrlInputForm({ onLinkAdded }: UrlInputFormProps) {
               render={({ field }) => (
                 <FormItem>
                   <FormLabel>
-                    {enableABTesting ? 'Variant A URL (Primary)' : 'URLs (one per line)'}
+                    {enableABTesting ? 'Variant A URL (Primary)' : (enableRotation ? 'URLs for Rotation (one per line)' : 'URL (Primary Destination)')}
                   </FormLabel>
                   <FormControl>
                     <Textarea
-                      placeholder={enableABTesting ? "example.com/variant-a" : "example.com/my-long-url-1\nhttps://another.com/my-long-url-2"}
+                      placeholder={enableABTesting ? "example.com/variant-a" : (enableRotation ? "example.com/path1\nexample.com/path2" : "example.com/my-long-url")}
                       className="min-h-[100px] resize-y"
                       {...field}
-                      rows={enableABTesting ? 1 : undefined} 
+                      rows={(enableABTesting || (!enableRotation && !enableABTesting)) ? 1 : undefined} 
                     />
                   </FormControl>
                   <FormDescription>
                     {enableABTesting 
                       ? "Enter the primary URL for your A/B test (Variant A)."
-                      : "Enter one or more URLs. If multiple URLs are provided and URL Rotation is not enabled, a separate short link will be created for each. URLs without http(s) will default to https."
+                      : (enableRotation 
+                          ? "Enter multiple URLs for rotation, one per line."
+                          : "Enter the primary destination URL. If multiple lines are entered, only the first will be used unless rotation is enabled.")
                     }
+                    URLs without http(s) will default to https.
                   </FormDescription>
                   <FormMessage />
                 </FormItem>
@@ -305,7 +340,7 @@ export function UrlInputForm({ onLinkAdded }: UrlInputFormProps) {
                         <FormControl>
                           <Input placeholder="my-cool-link" {...field} />
                         </FormControl>
-                         <FormDescription>If creating multiple links (not rotating/A/B testing), alias applies to the first URL only. Ignored if blank. Must be unique for the chosen domain.</FormDescription>
+                         <FormDescription>If left blank, a random slug will be generated. Must be unique for the chosen domain.</FormDescription>
                         <FormMessage />
                       </FormItem>
                     )}
@@ -319,7 +354,7 @@ export function UrlInputForm({ onLinkAdded }: UrlInputFormProps) {
                         <FormControl>
                           <Input placeholder="e.g., Summer Campaign Landing Page" {...field} />
                         </FormControl>
-                        <FormDescription>For your internal reference. Applies to all created links in this submission.</FormDescription>
+                        <FormDescription>For your internal reference.</FormDescription>
                         <FormMessage />
                       </FormItem>
                     )}
@@ -333,7 +368,6 @@ export function UrlInputForm({ onLinkAdded }: UrlInputFormProps) {
                         <FormControl>
                           <Input placeholder="marketing, promo, q3" {...field} />
                         </FormControl>
-                         <FormDescription>Applies to all created links in this submission.</FormDescription>
                         <FormMessage />
                       </FormItem>
                     )}
@@ -344,7 +378,7 @@ export function UrlInputForm({ onLinkAdded }: UrlInputFormProps) {
                     render={({ field }) => (
                       <FormItem>
                         <FormLabel className="flex items-center"><FolderKanban className="mr-2 h-4 w-4" />Link Group (Optional)</FormLabel>
-                        <Select onValueChange={field.onChange} defaultValue={field.value}>
+                        <Select onValueChange={field.onChange} value={field.value || 'none'}>
                           <FormControl>
                             <SelectTrigger>
                               <SelectValue placeholder="Select a group" />
@@ -359,33 +393,33 @@ export function UrlInputForm({ onLinkAdded }: UrlInputFormProps) {
                             ))}
                           </SelectContent>
                         </Select>
-                        <FormDescription>Assign this link/these links to a group for organization.</FormDescription>
+                        <FormDescription>Assign this link to a group for organization.</FormDescription>
                         <FormMessage />
                       </FormItem>
                     )}
                   />
                   <FormField
                     control={form.control}
-                    name="customDomain"
+                    name="customDomainId"
                     render={({ field }) => (
                       <FormItem>
                         <FormLabel className="flex items-center"><Globe className="mr-2 h-4 w-4" />Custom Domain (Optional)</FormLabel>
-                        <Select onValueChange={field.onChange} defaultValue={field.value}>
+                        <Select onValueChange={field.onChange} value={field.value || 'default'}>
                           <FormControl>
                             <SelectTrigger>
                               <SelectValue placeholder="Select a domain" />
                             </SelectTrigger>
                           </FormControl>
                           <SelectContent>
-                            <SelectItem value="default">Default Domain ({shortenerDomainState})</SelectItem>
-                            {verifiedDomains.map(domain => (
-                              <SelectItem key={domain.id} value={domain.domainName}>
+                            <SelectItem value="default">Default Domain ({globalShortenerDomain})</SelectItem>
+                            {customDomains.map(domain => (
+                              <SelectItem key={domain.id} value={domain.id}>
                                 {domain.domainName}
                               </SelectItem>
                             ))}
                           </SelectContent>
                         </Select>
-                        <FormDescription>Choose a verified custom domain for your short links. Defaults to the system domain.</FormDescription>
+                        <FormDescription>Choose a verified custom domain for your short link.</FormDescription>
                         <FormMessage />
                       </FormItem>
                     )}
@@ -406,7 +440,7 @@ export function UrlInputForm({ onLinkAdded }: UrlInputFormProps) {
                         <div className="space-y-0.5">
                           <FormLabel className="flex items-center"><Shuffle className="mr-2 h-4 w-4" />URL Rotation</FormLabel>
                           <FormDescription>
-                            Rotate between multiple URLs provided in the main input. (Disables A/B Testing)
+                            Rotate between multiple URLs provided in the main URL input. (Disables A/B Testing)
                           </FormDescription>
                         </div>
                         <FormControl>
@@ -433,7 +467,7 @@ export function UrlInputForm({ onLinkAdded }: UrlInputFormProps) {
                             <div className="space-y-0.5">
                             <FormLabel className="flex items-center"><FlaskConical className="mr-2 h-4 w-4" />A/B Testing</FormLabel>
                             <FormDescription>
-                                Split traffic between Variant A (from main input) and Variant B. (Disables URL Rotation)
+                                Split traffic between Variant A (from main URL input) and Variant B. (Disables URL Rotation)
                             </FormDescription>
                             </div>
                             <FormControl>
@@ -444,8 +478,14 @@ export function UrlInputForm({ onLinkAdded }: UrlInputFormProps) {
                                     if (checked && form.getValues('enableRotation')) {
                                         form.setValue('enableRotation', false);
                                     }
+                                    const urlsField = form.getValues('urls');
+                                    const currentUrls = urlsField.split('\n').filter(Boolean); // Corrected split here too for UI logic
+                                    if (checked && currentUrls.length > 1) {
+                                        form.setValue('urls', currentUrls[0]);
+                                        toast({title: "Info", description: "A/B testing uses the first URL as Variant A. Other URLs removed.", variant: "default"});
+                                    }
                                 }}
-                                disabled={enableRotation || form.getValues('urls').split('\n').filter(Boolean).length > 1 && !field.value}
+                                disabled={enableRotation}
                             />
                             </FormControl>
                         </div>
@@ -581,7 +621,7 @@ export function UrlInputForm({ onLinkAdded }: UrlInputFormProps) {
                             <div className="space-y-0.5">
                             <FormLabel className="flex items-center"><Target className="mr-2 h-4 w-4" />Link Retargeting</FormLabel>
                             <FormDescription>
-                                Add retargeting pixels to this link/these links.
+                                Add retargeting pixels to this link.
                             </FormDescription>
                             </div>
                             <FormControl>
@@ -598,7 +638,7 @@ export function UrlInputForm({ onLinkAdded }: UrlInputFormProps) {
                             render={({ field: pixelField }) => (
                                 <FormItem className="mt-4">
                                 <FormLabel>Select Retargeting Pixel</FormLabel>
-                                <Select onValueChange={pixelField.onChange} defaultValue={pixelField.value}>
+                                <Select onValueChange={pixelField.onChange} value={pixelField.value || 'none'}>
                                     <FormControl>
                                         <SelectTrigger>
                                             <SelectValue placeholder="Select a pixel to apply" />
@@ -613,7 +653,7 @@ export function UrlInputForm({ onLinkAdded }: UrlInputFormProps) {
                                         ))}
                                     </SelectContent>
                                 </Select>
-                                <FormDescription>Choose an existing retargeting pixel to attach to this link/these links.</FormDescription>
+                                <FormDescription>Choose an existing retargeting pixel to attach to this link.</FormDescription>
                                 <FormMessage />
                                 </FormItem>
                             )}
@@ -627,8 +667,8 @@ export function UrlInputForm({ onLinkAdded }: UrlInputFormProps) {
             </Accordion>
           </CardContent>
           <CardFooter>
-            <Button type="submit" className="w-full md:w-auto" disabled={form.formState.isSubmitting || !form.formState.isValid && form.formState.isSubmitted}>
-              {form.formState.isSubmitting ? 'Processing...' : 'Generate Links'}
+            <Button type="submit" className="w-full md:w-auto" disabled={form.formState.isSubmitting || (!form.formState.isValid && form.formState.isSubmitted)}>
+              {form.formState.isSubmitting ? 'Processing...' : 'Generate Link'}
             </Button>
           </CardFooter>
         </form>
@@ -636,4 +676,3 @@ export function UrlInputForm({ onLinkAdded }: UrlInputFormProps) {
     </Card>
   );
 }
-

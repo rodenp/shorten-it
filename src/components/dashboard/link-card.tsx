@@ -1,7 +1,7 @@
 
 'use client';
 
-import type { LinkItem, LinkGroup } from '@/types';
+import type { LinkItem } from '@/types'; // LinkGroup removed, groupName is now part of LinkItem
 import { Button, buttonVariants } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import {
@@ -27,30 +27,20 @@ import { Copy, Edit, Trash2, BarChartHorizontalBig, MoreVertical, ExternalLink, 
 import { useToast } from '@/hooks/use-toast';
 import Link from 'next/link';
 import { formatDistanceToNow } from 'date-fns';
-import React, { useEffect, useState } from 'react';
+import React from 'react'; // Removed useEffect, useState as groupName comes from prop
 import { cn } from '@/lib/utils';
-import { getMockLinkGroupById } from '@/lib/mock-data';
+// Removed: import { getMockLinkGroupById } from '@/lib/mock-data';
 
 
 interface LinkCardProps {
   link: LinkItem;
   onDelete?: (linkId: string) => void;
+  // onEdit?: (link: LinkItem) => void; // Consider adding an edit handler
 }
 
 export function LinkCard({ link, onDelete }: LinkCardProps) {
   const { toast } = useToast();
-  const [groupName, setGroupName] = useState<string | null>(null);
-
-  useEffect(() => {
-    if (link.groupId) {
-      const group = getMockLinkGroupById(link.groupId);
-      if (group) {
-        setGroupName(group.name);
-      }
-    } else {
-      setGroupName(null);
-    }
-  }, [link.groupId]);
+  // Removed useState and useEffect for groupName, as link.groupName should be available directly
 
   const handleCopy = (text: string) => {
     navigator.clipboard.writeText(text);
@@ -66,13 +56,20 @@ export function LinkCard({ link, onDelete }: LinkCardProps) {
     if (link.abTestConfig) {
         icons.push({ icon: FlaskConical, label: `A/B Test (${link.abTestConfig.splitPercentage}%/${100-link.abTestConfig.splitPercentage}%)` });
     }
-    else if (link.targets && link.targets.length > 1) {
+    // Check for rotation by seeing if targets has more than one item AND abTestConfig is not set
+    else if (link.targets && link.targets.length > 1 && !link.abTestConfig) {
         icons.push({ icon: Shuffle, label: `URL Rotation (${link.targets.length})` });
     }
 
     if (link.isCloaked) icons.push({ icon: ShieldCheck, label: "Link Cloaking" });
-    if (link.deepLinkConfig && (link.deepLinkConfig.ios || link.deepLinkConfig.android)) icons.push({ icon: MoveDiagonal, label: "Deep Linking" });
-    if (link.retargetingPixels && link.retargetingPixels.length > 0) icons.push({ icon: Target, label: "Retargeting" });
+    // Adjusted deepLinkConfig check for more clarity based on LinkItem type
+    if (link.deepLinkConfig && (link.deepLinkConfig.iosAppUriScheme || link.deepLinkConfig.androidAppUriScheme)) {
+         icons.push({ icon: MoveDiagonal, label: "Deep Linking" });
+    }
+    // Assuming retargetingPixels is now an array of RetargetingPixel objects
+    if (link.retargetingPixels && link.retargetingPixels.length > 0) {
+        icons.push({ icon: Target, label: `Retargeting (${link.retargetingPixels.length})` });
+    }
     return icons;
   }
 
@@ -82,20 +79,22 @@ export function LinkCard({ link, onDelete }: LinkCardProps) {
     if (link.abTestConfig) {
       return `A/B Test: ${link.targets[0]?.url.replace(/^https?:\/\//, '')} vs ${link.targets[1]?.url.replace(/^https?:\/\//, '')}`;
     }
-    if (link.targets && link.targets.length > 1) {
+    if (link.targets && link.targets.length > 1 && !link.abTestConfig) { // Ensure it's rotation
       return `Rotates between ${link.targets.length} URLs`;
     }
-    return link.targets[0]?.url || link.originalUrl || 'N/A';
+    // Default to the first target's URL or the originalUrl as fallback
+    return (link.targets && link.targets[0]?.url) ? link.targets[0].url.replace(/^https?:\/\//, '') : link.originalUrl.replace(/^https?:\/\//, '') || 'N/A';
   };
 
   const originalUrlTitle = () => {
      if (link.abTestConfig) {
-      return `Variant A (${link.abTestConfig.splitPercentage}%): ${link.targets[0]?.url}\nVariant B (${100-link.abTestConfig.splitPercentage}%): ${link.targets[1]?.url}`;
+      return `Variant A (${link.abTestConfig.splitPercentage}%): ${link.targets[0]?.url}
+Variant B (${100-link.abTestConfig.splitPercentage}%): ${link.targets[1]?.url}`;
     }
-    if (link.targets && link.targets.length > 1) {
+    if (link.targets && link.targets.length > 1 && !link.abTestConfig) { // Ensure it's rotation
       return link.targets.map(t => `${t.url} (${t.weight || (100/link.targets.length).toFixed(0)}%)`).join(', ');
     }
-    return link.targets[0]?.url || link.originalUrl || 'N/A';
+    return (link.targets && link.targets[0]?.url) || link.originalUrl || 'N/A';
   };
 
 
@@ -120,14 +119,15 @@ export function LinkCard({ link, onDelete }: LinkCardProps) {
                 <Copy className="mr-2 h-4 w-4" />
                 <span>Copy Short URL</span>
               </DropdownMenuItem>
-              <DropdownMenuItem asChild disabled>
+              {/* Consider enabling an edit link/modal later */}
+              {/* <DropdownMenuItem asChild>
                 <Link href={`/links/${link.slug}/edit`} className="flex items-center">
                   <Edit className="mr-2 h-4 w-4" />
                   <span>Edit Link</span>
                 </Link>
-              </DropdownMenuItem>
+              </DropdownMenuItem> */}
               <DropdownMenuItem asChild>
-                <Link href={`/analytics/${link.slug || link.id}`} className="flex items-center">
+                <Link href={`/analytics/${link.id}`} className="flex items-center"> {/* Changed to link.id for analytics route */}
                   <BarChartHorizontalBig className="mr-2 h-4 w-4" />
                   <span>View Analytics</span>
                 </Link>
@@ -138,10 +138,10 @@ export function LinkCard({ link, onDelete }: LinkCardProps) {
                    <AlertDialog>
                     <AlertDialogTrigger asChild>
                       <DropdownMenuItem
-                        onSelect={(e) => e.preventDefault()} // Prevent closing dropdown
+                        onSelect={(e) => e.preventDefault()} 
                         className="text-destructive focus:bg-destructive focus:text-destructive-foreground justify-start"
                        >
-                        <Trash2 />
+                        <Trash2 className="h-4 w-4 mr-2" /> {/* Ensure icon class consistency */}
                         <span>Delete Link</span>
                       </DropdownMenuItem>
                     </AlertDialogTrigger>
@@ -182,15 +182,15 @@ export function LinkCard({ link, onDelete }: LinkCardProps) {
           </div>
         </div>
 
-        {(featureIcons.length > 0 || (link.tags && link.tags.length > 0) || groupName) && (
+        {(featureIcons.length > 0 || (link.tags && link.tags.length > 0) || link.groupName) && (
           <div className="space-y-2">
-            {groupName && (
+            {link.groupName && (
               <Badge variant="outline" className="py-1 px-2 text-xs font-medium">
-                <FolderKanban className="mr-1 h-3 w-3" /> {groupName}
+                <FolderKanban className="mr-1 h-3 w-3" /> {link.groupName}
               </Badge>
             )}
             {featureIcons.length > 0 && (
-              <div className={cn("flex items-center gap-2 flex-wrap", groupName && "mt-2")}>
+              <div className={cn("flex items-center gap-2 flex-wrap", link.groupName && "mt-2")}>
                 {featureIcons.map(f => (
                   <Badge variant="secondary" key={f.label} className="py-1 px-2 text-xs">
                     <f.icon className="mr-1 h-3 w-3" /> {f.label}
@@ -199,7 +199,7 @@ export function LinkCard({ link, onDelete }: LinkCardProps) {
               </div>
             )}
             {link.tags && link.tags.length > 0 && (
-              <div className={cn("flex items-center gap-1.5 flex-wrap", (groupName || featureIcons.length > 0) && "mt-2")}>
+              <div className={cn("flex items-center gap-1.5 flex-wrap", (link.groupName || featureIcons.length > 0) && "mt-2")}>
                 {link.tags.map(tag => (
                   <Badge variant="outline" key={tag} className="py-0.5 px-1.5 text-xs">{tag}</Badge>
                 ))}

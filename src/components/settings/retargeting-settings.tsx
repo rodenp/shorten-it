@@ -30,12 +30,6 @@ import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Separator } from '@/components/ui/separator';
 import { useToast } from '@/hooks/use-toast';
-import {
-  getMockRetargetingPixels,
-  addMockRetargetingPixel,
-  deleteMockRetargetingPixel,
-  updateMockRetargetingPixel,
-} from '@/lib/mock-data';
 import { PlusCircle, Trash2, Edit, Target } from 'lucide-react';
 import { useState, useEffect, useCallback } from 'react';
 import { format } from 'date-fns';
@@ -52,9 +46,21 @@ export function RetargetingSettings() {
   const [pixelType, setPixelType] = useState<RetargetingPixel['type']>(pixelTypes[0]);
   const [pixelIdValue, setPixelIdValue] = useState('');
 
-  const fetchPixels = useCallback(() => {
-    setPixels(getMockRetargetingPixels());
-  }, []);
+  const fetchPixels = useCallback(async () => {
+    try {
+      const response = await fetch('/api/retargeting-pixels');
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({ message: 'Failed to fetch pixels' }));
+        throw new Error(errorData.message);
+      }
+      const data = await response.json();
+      setPixels(Array.isArray(data) ? data : []);
+    } catch (error: any) {
+      console.error("Error fetching pixels:", error);
+      toast({ title: 'Error', description: error.message || 'Could not fetch retargeting pixels.', variant: 'destructive' });
+      setPixels([]);
+    }
+  }, [toast]);
 
   useEffect(() => {
     fetchPixels();
@@ -80,39 +86,76 @@ export function RetargetingSettings() {
     setIsAddOrEditDialogOpen(true);
   };
 
-  const handleSubmitPixel = () => {
+  const handleSubmitPixel = async () => {
     if (!pixelName.trim()) {
-      toast({ title: 'Error', description: 'Pixel name cannot be empty.', variant: 'destructive' });
+      toast({ title: 'Validation Error', description: 'Pixel name cannot be empty.', variant: 'destructive' });
       return;
     }
     if (!pixelIdValue.trim()) {
-      toast({ title: 'Error', description: 'Pixel ID cannot be empty.', variant: 'destructive' });
+      toast({ title: 'Validation Error', description: 'Pixel ID cannot be empty.', variant: 'destructive' });
       return;
     }
 
-    let result;
+    const pixelData = { name: pixelName.trim(), type: pixelType, pixelIdValue: pixelIdValue.trim() };
+    let url = '/api/retargeting-pixels';
+    let method = 'POST';
+
     if (currentPixel) {
-      result = updateMockRetargetingPixel(currentPixel.id, pixelName, pixelType, pixelIdValue);
-    } else {
-      result = addMockRetargetingPixel(pixelName, pixelType, pixelIdValue);
+      url = `/api/retargeting-pixels/${currentPixel.id}`;
+      method = 'PUT';
     }
 
-    if ('error' in result) {
-      toast({ title: `Error ${currentPixel ? 'Updating' : 'Adding'} Pixel`, description: result.error, variant: 'destructive' });
-    } else {
-      toast({ title: `Pixel ${currentPixel ? 'Updated' : 'Added'}`, description: `"${result.name}" has been successfully ${currentPixel ? 'updated' : 'added'}.`, variant: 'default' });
+    try {
+      const response = await fetch(url, {
+        method: method,
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(pixelData),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({ message: `Failed to ${currentPixel ? 'update' : 'add'} pixel` }));
+        throw new Error(errorData.message);
+      }
+
+      const savedPixel = await response.json();
+      toast({ 
+        title: `Pixel ${currentPixel ? 'Updated' : 'Added'}`,
+        description: `"${savedPixel.name}" has been successfully ${currentPixel ? 'updated' : 'added'}.`,
+        variant: 'default' 
+      });
       fetchPixels();
       setIsAddOrEditDialogOpen(false);
       resetForm();
+    } catch (error: any) {
+      toast({ 
+        title: `Error ${currentPixel ? 'Updating' : 'Adding'} Pixel`,
+        description: error.message || `Could not ${currentPixel ? 'update' : 'add'} the pixel.`,
+        variant: 'destructive' 
+      });
     }
   };
 
-  const handleDeletePixel = (pixelId: string, name: string) => {
-    if (deleteMockRetargetingPixel(pixelId)) {
+  const handleDeletePixel = async (pixelId: string, name: string) => {
+    try {
+      const response = await fetch(`/api/retargeting-pixels/${pixelId}`, {
+        method: 'DELETE',
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({ message: 'Failed to delete pixel' }));
+        throw new Error(errorData.message);
+      }
+
       toast({ title: 'Pixel Deleted', description: `Pixel "${name}" has been deleted.`, variant: 'default' });
       fetchPixels();
-    } else {
-      toast({ title: 'Error Deleting Pixel', description: 'Could not delete the pixel.', variant: 'destructive' });
+    } catch (error: any) {
+      toast({ 
+        title: 'Error Deleting Pixel',
+        description: error.message || 'Could not delete the pixel.',
+        variant: 'destructive' 
+      });
     }
   };
 
@@ -187,7 +230,7 @@ export function RetargetingSettings() {
                   <p className="font-medium">{pixel.name}</p>
                   <p className="text-xs text-muted-foreground">Type: {pixel.type}</p>
                   <p className="text-xs text-muted-foreground">ID: {pixel.pixelIdValue}</p>
-                  <p className="text-xs text-muted-foreground">Created: {format(new Date(pixel.createdAt), "MMM d, yyyy")}</p>
+                  <p className="text-xs text-muted-foreground">Created: {pixel.createdAt ? format(new Date(pixel.createdAt), "MMM d, yyyy") : 'Date not available'}</p>
                 </div>
                 <div className="flex items-center gap-2 flex-shrink-0 self-start sm:self-center">
                   <Button variant="outline" size="sm" onClick={() => handleOpenEditDialog(pixel)}>
@@ -219,7 +262,7 @@ export function RetargetingSettings() {
             ))}
           </ul>
         ) : (
-          <p className="text-muted-foreground text-center py-4">No retargeting pixels added yet.</p>
+          <p className="text-muted-foreground text-center py-4">No retargeting pixels added yet. Please add one to get started.</p>
         )}
       </CardContent>
     </Card>

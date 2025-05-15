@@ -2,7 +2,6 @@
 'use client';
 
 import { AnalyticsChart } from '@/components/analytics/analytics-chart';
-import { getMockLinkBySlugOrId, getAnalyticsForLink, getMockAnalyticsChartDataForLink } from '@/lib/mock-data';
 import type { LinkItem } from '@/types';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { ArrowLeft, BarChart3, CalendarDays, Clock, ExternalLink, Globe, Link2, MapPin, Smartphone, UserSquare } from 'lucide-react';
@@ -14,37 +13,72 @@ import { format } from 'date-fns';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { useEffect, useState } from 'react';
 
+// Define a type for the analytics data structure we expect from the API
+interface LinkAnalyticsData {
+  chartData: { date: string; clicks: number }[];
+  recentEvents: any[]; // Replace 'any' with a more specific type if available
+  // Add other analytics fields like topLocations, topReferrers etc. if your API returns them
+}
+
 export default function LinkSpecificAnalyticsPage() {
   const params = useParams();
   const slug = params.slug as string;
 
-  const [link, setLink] = useState<LinkItem | undefined>(undefined);
-  const [chartData, setChartData] = useState<{ date: string; clicks: number }[]>([]);
-  const [linkSpecificEvents, setLinkSpecificEvents] = useState<any[]>([]); // Using any for mock simplicity
+  const [link, setLink] = useState<LinkItem | null | undefined>(undefined);
+  const [analyticsData, setAnalyticsData] = useState<LinkAnalyticsData | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    setIsLoading(true);
-    const currentLink = getMockLinkBySlugOrId(slug);
-    
-    if (currentLink) {
-      setLink(currentLink);
-      setChartData(getMockAnalyticsChartDataForLink(currentLink.id, 30));
-      const events = getAnalyticsForLink(currentLink.id).slice(0, 5);
-      setLinkSpecificEvents(events);
-    } else {
-      // If link is not found after attempting to fetch, set it to null to trigger notFound()
-      setLink(null); 
-    }
-    setIsLoading(false);
-  }, [slug]);
+    async function fetchData() {
+      setIsLoading(true);
+      setError(null);
+      try {
+        // Fetch link details
+        const linkRes = await fetch(`/api/links/${slug}`);
+        if (!linkRes.ok) {
+          if (linkRes.status === 404) {
+            setLink(null); // Mark as not found
+          } else {
+            throw new Error(`Failed to fetch link: ${linkRes.statusText}`);
+          }
+          setIsLoading(false);
+          return;
+        }
+        const linkData: LinkItem = await linkRes.json();
+        setLink(linkData);
 
+        if (linkData && linkData.id) {
+          // Fetch analytics data for the link
+          // Assuming a new endpoint that returns chart data and recent events
+          const analyticsRes = await fetch(`/api/analytics/link/${linkData.id}`);
+          if (!analyticsRes.ok) {
+            throw new Error(`Failed to fetch analytics: ${analyticsRes.statusText}`);
+          }
+          const analytics: LinkAnalyticsData = await analyticsRes.json();
+          setAnalyticsData(analytics);
+        } else if (!linkData) { // Handle case where linkData might not be what we expect
+            setLink(null); // If linkData is not valid, treat as not found
+        }
+
+      } catch (err: any) {
+        setError(err.message || 'An unexpected error occurred');
+        console.error("Error fetching link analytics:", err);
+        // Potentially setLink(null) here as well, depending on desired behavior on error
+      }
+      setIsLoading(false);
+    }
+
+    if (slug) {
+      fetchData();
+    }
+  }, [slug]);
 
   if (isLoading) {
     return (
       <div className="container mx-auto py-10 text-center">
         <p className="text-lg text-muted-foreground">Loading link data...</p>
-         <Button variant="outline" size="sm" asChild className="mt-6">
+        <Button variant="outline" size="sm" asChild className="mt-6">
           <Link href="/analytics">
             <ArrowLeft className="mr-2 h-4 w-4" />
             Back to All Analytics
@@ -54,18 +88,30 @@ export default function LinkSpecificAnalyticsPage() {
     );
   }
 
-  if (link === null) { // Explicitly check for null after loading attempt
-    notFound();
+  if (error) {
+    return (
+      <div className="container mx-auto py-10 text-center">
+        <p className="text-lg text-destructive">Error: {error}</p>
+        <Button variant="outline" size="sm" asChild className="mt-6">
+          <Link href="/analytics">
+            <ArrowLeft className="mr-2 h-4 w-4" />
+            Back to All Analytics
+          </Link>
+        </Button>
+      </div>
+    );
   }
   
-  // This check is to satisfy TypeScript, as `link` could be undefined if notFound() wasn't called yet.
-  // However, the logic above ensures `link` is either an object or notFound() is called.
-  if (!link) {
-    // This case should ideally not be reached if isLoading and link === null checks are correct.
-    // It acts as a fallback.
+  if (link === null) { 
+    notFound();
+    return null; // notFound() should throw, but satisfy TS
+  }
+  
+  if (!link || !analyticsData) {
+    // This case should ideally not be reached if loading, error, and notFound checks are correct.
     return (
          <div className="container mx-auto py-10 text-center">
-            <p className="text-lg text-muted-foreground">Link not found.</p>
+            <p className="text-lg text-muted-foreground">Link data or analytics is not available.</p>
              <Button variant="outline" size="sm" asChild className="mt-6">
               <Link href="/analytics">
                 <ArrowLeft className="mr-2 h-4 w-4" />
@@ -75,7 +121,6 @@ export default function LinkSpecificAnalyticsPage() {
         </div>
     );
   }
-
 
   return (
      <div className="container mx-auto py-2">
@@ -126,7 +171,7 @@ export default function LinkSpecificAnalyticsPage() {
                 >
                     {link.targets[0]?.url || 'N/A'}
                 </a>
-                {link.targets.length > 1 && <Badge variant="secondary" className="mt-2">URL Rotation Active</Badge>}
+                {link.targets.length > 1 && !link.abTestConfig && <Badge variant="secondary" className="mt-2">URL Rotation Active</Badge>}
             </CardContent>
          </Card>
          <Card>
@@ -142,25 +187,23 @@ export default function LinkSpecificAnalyticsPage() {
       </div>
 
       <AnalyticsChart 
-        data={chartData} 
+        data={analyticsData.chartData} 
         chartType="line"
         title="Click Trend (Last 30 Days)"
         description="Daily click performance for this link."
       />
 
+      {/* Placeholder cards for Top Locations, Top Referrers, etc. will need to be updated 
+          if this data is now available from the analyticsData state variable */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mt-8">
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center"><MapPin className="mr-2 h-5 w-5 text-primary" />Top Locations</CardTitle>
           </CardHeader>
           <CardContent>
-            {/* Placeholder content */}
+            {/* Replace with actual data if available from analyticsData.topLocations */}
             <ul className="space-y-1 text-sm">
-              <li className="flex justify-between"><span>United States</span> <span className="font-medium">65%</span></li>
-              <li className="flex justify-between"><span>Canada</span> <span className="font-medium">15%</span></li>
-              <li className="flex justify-between"><span>United Kingdom</span> <span className="font-medium">10%</span></li>
-              <li className="flex justify-between"><span>Germany</span> <span className="font-medium">5%</span></li>
-              <li className="flex justify-between"><span>Other</span> <span className="font-medium">5%</span></li>
+              {/* Hardcoded items removed */}
             </ul>
           </CardContent>
         </Card>
@@ -169,13 +212,9 @@ export default function LinkSpecificAnalyticsPage() {
             <CardTitle className="flex items-center"><UserSquare className="mr-2 h-5 w-5 text-primary" />Top Referrers</CardTitle>
           </CardHeader>
           <CardContent>
-            {/* Placeholder content */}
+            {/* Replace with actual data if available from analyticsData.topReferrers */}
              <ul className="space-y-1 text-sm">
-              <li className="flex justify-between"><span>google.com</span> <span className="font-medium">40%</span></li>
-              <li className="flex justify-between"><span>twitter.com</span> <span className="font-medium">25%</span></li>
-              <li className="flex justify-between"><span>linkedin.com</span> <span className="font-medium">20%</span></li>
-              <li className="flex justify-between"><span>direct</span> <span className="font-medium">10%</span></li>
-              <li className="flex justify-between"><span>Other</span> <span className="font-medium">5%</span></li>
+              {/* Hardcoded items removed */}
             </ul>
           </CardContent>
         </Card>
@@ -184,11 +223,9 @@ export default function LinkSpecificAnalyticsPage() {
             <CardTitle className="flex items-center"><Smartphone className="mr-2 h-5 w-5 text-primary" />Device Types</CardTitle>
           </CardHeader>
           <CardContent>
-            {/* Placeholder content */}
+            {/* Replace with actual data if available from analyticsData.deviceTypes */}
             <ul className="space-y-1 text-sm">
-              <li className="flex justify-between"><span>Desktop</span> <span className="font-medium">60%</span></li>
-              <li className="flex justify-between"><span>Mobile</span> <span className="font-medium">35%</span></li>
-              <li className="flex justify-between"><span>Tablet</span> <span className="font-medium">5%</span></li>
+              {/* Hardcoded items removed */}
             </ul>
           </CardContent>
         </Card>
@@ -197,12 +234,9 @@ export default function LinkSpecificAnalyticsPage() {
             <CardTitle className="flex items-center"><Globe className="mr-2 h-5 w-5 text-primary" />Browsers & OS</CardTitle>
           </CardHeader>
           <CardContent>
-            {/* Placeholder content */}
+            {/* Replace with actual data if available from analyticsData.browsersAndOS */}
             <ul className="space-y-1 text-sm">
-              <li className="flex justify-between"><span>Chrome (Windows)</span> <span className="font-medium">50%</span></li>
-              <li className="flex justify-between"><span>Safari (iOS)</span> <span className="font-medium">25%</span></li>
-              <li className="flex justify-between"><span>Firefox (MacOS)</span> <span className="font-medium">15%</span></li>
-              <li className="flex justify-between"><span>Other</span> <span className="font-medium">10%</span></li>
+              {/* Hardcoded items removed */}
             </ul>
           </CardContent>
         </Card>
@@ -211,7 +245,7 @@ export default function LinkSpecificAnalyticsPage() {
       <Card className="mt-8">
         <CardHeader>
             <CardTitle>Recent Clicks</CardTitle>
-            <CardDescription>A log of the latest click events for this link (example data).</CardDescription>
+            <CardDescription>A log of the latest click events for this link.</CardDescription>
         </CardHeader>
         <CardContent>
             <Table>
@@ -224,15 +258,15 @@ export default function LinkSpecificAnalyticsPage() {
                     </TableRow>
                 </TableHeader>
                 <TableBody>
-                    {linkSpecificEvents.map(event => (
-                        <TableRow key={event.id}>
+                    {analyticsData.recentEvents.map((event: any) => ( // Use a specific type for event if known
+                        <TableRow key={event.id}> 
                             <TableCell>{format(new Date(event.timestamp), "MMM d, yyyy HH:mm")}</TableCell>
                             <TableCell>{event.country || 'N/A'}</TableCell>
                             <TableCell>{event.deviceType ? event.deviceType.charAt(0).toUpperCase() + event.deviceType.slice(1) : 'N/A'} ({event.browser || 'N/A'})</TableCell>
                             <TableCell className="truncate max-w-xs" title={event.referrer || undefined}>{event.referrer || 'Direct'}</TableCell>
                         </TableRow>
                     ))}
-                     {linkSpecificEvents.length === 0 && (
+                     {analyticsData.recentEvents.length === 0 && (
                         <TableRow>
                             <TableCell colSpan={4} className="text-center text-muted-foreground">No recent click data available for this link.</TableCell>
                         </TableRow>

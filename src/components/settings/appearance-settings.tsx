@@ -7,32 +7,35 @@ import { Label } from "@/components/ui/label";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Switch } from "@/components/ui/switch";
 import { useToast } from '@/hooks/use-toast';
-
-type Theme = 'light' | 'dark' | 'system';
+import type { UserPreference, Theme } from '@/models/UserPreference'; // Import types from model
+import { Loader2 } from 'lucide-react';
 
 export function AppearanceSettings() {
   const { toast } = useToast();
-  const [theme, setTheme] = useState<Theme>('system');
-  const [isCompactMode, setIsCompactMode] = useState(false);
-  const [mounted, setMounted] = useState(false);
+  // Initialize with default values or null, to be populated from API
+  const [theme, setTheme] = useState<Theme>('system'); 
+  const [isCompactMode, setIsCompactMode] = useState<boolean>(false);
+  const [isLoading, setIsLoading] = useState(true);
+  const [isSaving, setIsSaving] = useState(false);
+  const [mounted, setMounted] = useState(false); // To prevent SSR/hydration issues with theme application
 
-  const applyTheme = useCallback((selectedTheme: Theme) => {
+  // Function to apply theme to the document
+  const applyThemeToDocument = useCallback((selectedTheme: Theme) => {
     if (typeof window === 'undefined') return;
-
     const root = window.document.documentElement;
-    root.classList.remove('light', 'dark'); // Remove existing theme classes
-
+    root.classList.remove('light', 'dark');
     if (selectedTheme === 'system') {
       const systemTheme = window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
       root.classList.add(systemTheme);
-      localStorage.setItem('linkwiz-theme', 'system');
     } else {
       root.classList.add(selectedTheme);
-      localStorage.setItem('linkwiz-theme', selectedTheme);
     }
+    // Store preference in localStorage for immediate effect on next page load before DB sync
+    localStorage.setItem('linkwiz-theme', selectedTheme);
   }, []);
 
-  const applyCompactMode = useCallback((compact: boolean) => {
+  // Function to apply compact mode to the document
+  const applyCompactModeToDocument = useCallback((compact: boolean) => {
     if (typeof window === 'undefined') return;
     const root = window.document.documentElement;
     if (compact) {
@@ -43,60 +46,86 @@ export function AppearanceSettings() {
     localStorage.setItem('linkwiz-compactMode', JSON.stringify(compact));
   }, []);
 
-  // Load preferences from localStorage on mount
+  // Fetch preferences from API on mount
   useEffect(() => {
-    setMounted(true); // Indicate component has mounted
-    const storedTheme = localStorage.getItem('linkwiz-theme') as Theme | null;
-    const storedCompactMode = localStorage.getItem('linkwiz-compactMode');
-
-    if (storedTheme) {
-      setTheme(storedTheme);
-      applyTheme(storedTheme);
-    } else {
-      applyTheme('system'); // Default to system if nothing is stored
-    }
-
-    if (storedCompactMode) {
-      const compact = JSON.parse(storedCompactMode);
-      setIsCompactMode(compact);
-      applyCompactMode(compact);
-    }
-  }, [applyTheme, applyCompactMode]); // Dependencies ensure these run once after mount due to their own stability
+    setMounted(true);
+    const fetchPreferences = async () => {
+      setIsLoading(true);
+      try {
+        const response = await fetch('/api/user/preferences');
+        if (!response.ok) {
+          const errorData = await response.json();
+          throw new Error(errorData.message || 'Failed to fetch preferences');
+        }
+        const prefs: UserPreference = await response.json();
+        setTheme(prefs.theme);
+        setIsCompactMode(prefs.isCompactMode);
+        applyThemeToDocument(prefs.theme);
+        applyCompactModeToDocument(prefs.isCompactMode);
+      } catch (error: any) {
+        toast({ title: "Error Loading Preferences", description: error.message, variant: "destructive" });
+        // Apply defaults visually if fetch fails, but don't save them yet
+        applyThemeToDocument('system');
+        applyCompactModeToDocument(false);
+      }
+      setIsLoading(false);
+    };
+    fetchPreferences();
+  }, [toast, applyThemeToDocument, applyCompactModeToDocument]);
 
   // Effect for system theme changes (if 'system' is selected)
   useEffect(() => {
-    if (typeof window === 'undefined' || theme !== 'system' || !mounted) return;
+    if (!mounted || typeof window === 'undefined' || theme !== 'system') return;
 
     const mediaQuery = window.matchMedia('(prefers-color-scheme: dark)');
     const handleChange = () => {
-      // Only re-apply if current theme is 'system'
+      // Only re-apply if current theme is 'system' (check against state or localStorage)
       if (localStorage.getItem('linkwiz-theme') === 'system') {
-        applyTheme('system');
+         applyThemeToDocument('system');
       }
     };
-
     mediaQuery.addEventListener('change', handleChange);
-    // Initial check
-    handleChange(); 
-    return () => mediaQuery.removeEventListener('change', handleChange);
-  }, [theme, applyTheme, mounted]);
+    // Initial check to apply system theme correctly if that's the preference
+    if (theme === 'system') handleChange(); 
 
+    return () => mediaQuery.removeEventListener('change', handleChange);
+  }, [theme, applyThemeToDocument, mounted]);
+
+  // Generic function to save preferences
+  const savePreference = async (preference: Partial<UserPreference>) => {
+    setIsSaving(true);
+    try {
+      const response = await fetch('/api/user/preferences', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(preference),
+      });
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.message || 'Failed to save preference');
+      }
+      // const updatedPrefs: UserPreference = await response.json(); // Can use this to sync state if needed
+      toast({ title: 'Appearance Updated', description: `Preference saved successfully.` });
+    } catch (error: any) {
+      toast({ title: "Error Saving Preference", description: error.message, variant: "destructive" });
+      // Optionally revert UI changes here if save fails
+    }
+    setIsSaving(false);
+  };
 
   const handleThemeChange = (newTheme: Theme) => {
     setTheme(newTheme);
-    applyTheme(newTheme);
-    toast({ title: 'Appearance Updated', description: `Theme set to ${newTheme}.` });
+    applyThemeToDocument(newTheme);
+    savePreference({ theme: newTheme });
   };
 
   const handleCompactModeChange = (checked: boolean) => {
     setIsCompactMode(checked);
-    applyCompactMode(checked);
-    toast({ title: 'Appearance Updated', description: `Compact mode ${checked ? 'enabled' : 'disabled'}.` });
+    applyCompactModeToDocument(checked);
+    savePreference({ isCompactMode: checked });
   };
   
-  if (!mounted) {
-    // Render nothing or a loading skeleton until the component is mounted and can safely access localStorage
-    // This helps prevent hydration mismatches.
+  if (!mounted || isLoading) {
     return (
         <Card>
             <CardHeader>
@@ -104,8 +133,12 @@ export function AppearanceSettings() {
                 <CardDescription>Loading appearance settings...</CardDescription>
             </CardHeader>
             <CardContent className="space-y-6">
-                <div className="h-20 rounded-lg border p-4 animate-pulse bg-muted/50"></div>
-                <div className="h-20 rounded-lg border p-4 animate-pulse bg-muted/50"></div>
+                <div className="h-20 rounded-lg border p-4 animate-pulse bg-muted/50 flex items-center justify-center">
+                  <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+                </div>
+                <div className="h-20 rounded-lg border p-4 animate-pulse bg-muted/50 flex items-center justify-center">
+                  <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+                </div>
             </CardContent>
         </Card>
     );
@@ -115,7 +148,7 @@ export function AppearanceSettings() {
     <Card>
       <CardHeader>
         <CardTitle>Appearance</CardTitle>
-        <CardDescription>Customize the look and feel of your LinkWiz dashboard.</CardDescription>
+        <CardDescription>Customize the look and feel of your dashboard.</CardDescription>
       </CardHeader>
       <CardContent className="space-y-6">
         <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between rounded-lg border p-4">
@@ -127,9 +160,9 @@ export function AppearanceSettings() {
           </div>
           <Tabs value={theme} onValueChange={(value) => handleThemeChange(value as Theme)} className="w-full sm:w-auto">
             <TabsList className="grid w-full grid-cols-3 sm:w-auto">
-              <TabsTrigger value="light">Light</TabsTrigger>
-              <TabsTrigger value="dark">Dark</TabsTrigger>
-              <TabsTrigger value="system">System</TabsTrigger>
+              <TabsTrigger value="light" disabled={isSaving}>Light</TabsTrigger>
+              <TabsTrigger value="dark" disabled={isSaving}>Dark</TabsTrigger>
+              <TabsTrigger value="system" disabled={isSaving}>System</TabsTrigger>
             </TabsList>
           </Tabs>
         </div>
@@ -144,6 +177,7 @@ export function AppearanceSettings() {
             id="compact-mode"
             checked={isCompactMode}
             onCheckedChange={handleCompactModeChange}
+            disabled={isSaving}
             aria-label="Toggle compact mode"
           />
         </div>

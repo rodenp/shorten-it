@@ -8,42 +8,48 @@ export interface LinkGroup {
   name: string;
   description?: string;
   createdAt: string; // ISO date string
+  updatedAt?: string; // ISO date string
   linkCount?: number; // Optional: to display how many links are in this group
 }
 
 export interface RetargetingPixel {
   id: string;
+  userId?: string; // Foreign key to User table
   name: string;
   type: 'Facebook Pixel' | 'Google Ads Tag' | 'LinkedIn Insight Tag' | 'Custom';
   pixelIdValue: string; // The actual ID/tag from the platform
   createdAt: string; // ISO date string
+  updatedAt?: string; // ISO date string
 }
 
 
 export interface LinkItem {
   id:string;
-  originalUrl: string; // Represents the primary destination or Variant A in an A/B test.
-  targets: LinkTarget[]; // Holds all destination URLs, including variants for A/B testing or rotation.
+  userId?: string; // Added userId for clarity on ownership
+  originalUrl: string; 
+  targets: LinkTarget[]; 
   shortUrl: string;
   slug: string;
   clickCount: number;
-  createdAt: string; // ISO date string
-  customDomain?: string;
+  createdAt: string; 
+  updatedAt?: string; 
+  customDomain?: string; // This is the domain NAME, not ID
+  customDomainId?: string; // Keep the ID for linking if needed separately
   isCloaked?: boolean;
   deepLinkConfig?: { iosAppUriScheme: string; androidAppUriScheme: string; fallbackUrl?: string };
   abTestConfig?: { variantAUrl: string; variantBUrl: string; splitPercentage: number };
-  // Storing an array of pixel objects directly associated with the link
-  retargetingPixels?: { name: string; type: RetargetingPixel['type']; pixelIdValue: string }[];
+  retargetingPixels?: RetargetingPixel[]; // Changed to full RetargetingPixel objects
   tags?: string[];
   title?: string;
   groupId?: string; 
+  groupName?: string; // Added for displaying group name directly
 }
 
 export interface AnalyticEvent {
   id: string;
   linkId: string;
-  timestamp: string; // ISO date string
-  ipAddress?: string; // Anonymized or hashed
+  timestamp: string; 
+  ipAddress?: string; 
   userAgent?: string;
   country?: string;
   city?: string;
@@ -57,30 +63,34 @@ export interface UserProfile {
   id: string;
   fullName: string;
   email: string;
-  avatarUrl: string; // URL to the avatar image
-  // Add other profile fields as needed, e.g., preferences
+  avatarUrl: string; 
 }
 
 export interface TeamMember extends UserProfile {
-  // id, fullName, email, avatarUrl inherited from UserProfile
   role: 'admin' | 'editor' | 'viewer';
+  teamMembershipId?: string; // Optional: if fetched via teamService, this might be populated
+  membershipCreatedAt?: string;
+  membershipUpdatedAt?: string;
 }
 
 
 export interface CustomDomain {
   id: string;
+  userId?: string; // Added userId for clarity on ownership
   domainName: string;
   verified: boolean;
   createdAt: string;
+  updatedAt?: string; 
 }
 
 export interface ApiKey {
   id: string;
+  userId?: string; // Added userId for clarity on ownership
   name: string;
-  key: string; // The actual API key string (only shown on creation)
-  prefix: string; // First few chars of the key for display
-  createdAt: string; // ISO date string
-  lastUsedAt?: string; // ISO date string, optional
-  permissions?: string[]; // e.g., ['links:read', 'links:write']
+  key?: string; // The actual API key string (only shown on creation)
+  prefix: string; 
+  createdAt: string; 
+  updatedAt?: string; 
+  lastUsedAt?: string; 
+  permissions?: string[]; 
 }
-

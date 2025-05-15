@@ -1,7 +1,7 @@
 
 'use client';
 
-import type { CustomDomain } from '@/types';
+import type { CustomDomain } from '@/models/CustomDomain'; // Use the model interface directly
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import {
@@ -23,21 +23,14 @@ import {
   AlertDialogFooter,
   AlertDialogHeader,
   AlertDialogTitle,
-  AlertDialogTrigger,
-} from '@/components/ui/alert-dialog';
+  AlertDialogTrigger, // Added AlertDialogTrigger back
+} from '@/components/ui/alert-dialog'; 
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
 import { useToast } from '@/hooks/use-toast';
-import {
-  getMockCustomDomains,
-  addMockCustomDomain,
-  deleteMockCustomDomain,
-  toggleVerifyMockCustomDomain,
-  updateMockCustomDomainName,
-} from '@/lib/mock-data';
-import { PlusCircle, Trash2, Edit, CheckCircle, XCircle } from 'lucide-react';
+import { PlusCircle, Trash2, Edit, CheckCircle, XCircle, Loader2 } from 'lucide-react';
 import { useState, useEffect, useCallback } from 'react';
 
 export function CustomDomainsSettings() {
@@ -48,50 +41,101 @@ export function CustomDomainsSettings() {
   const [editDomainNameInput, setEditDomainNameInput] = useState('');
   const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
   const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
+  const [isSubmitting, setIsSubmitting] = useState(false); // For add/edit operations
+  const [isDeleting, setIsDeleting] = useState<string | null>(null); // Store ID of domain being deleted
+  const [isVerifying, setIsVerifying] = useState<string | null>(null); // Store ID of domain being verified
 
-  const fetchDomains = useCallback(() => {
-    setDomains(getMockCustomDomains());
-  }, []);
+  const fetchDomains = useCallback(async () => {
+    setIsLoading(true);
+    try {
+      const response = await fetch('/api/custom-domains');
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.message || 'Failed to fetch domains');
+      }
+      const data: CustomDomain[] = await response.json();
+      setDomains(data);
+    } catch (error: any) {
+      toast({ title: "Error", description: error.message, variant: "destructive" });
+    }
+    setIsLoading(false);
+  }, [toast]);
 
   useEffect(() => {
     fetchDomains();
   }, [fetchDomains]);
 
-  const handleAddDomain = () => {
+  const handleAddDomain = async () => {
     if (!newDomainName.trim()) {
       toast({ title: "Error", description: "Domain name cannot be empty.", variant: "destructive" });
       return;
     }
-    const result = addMockCustomDomain(newDomainName);
-    if ('error' in result) {
-      toast({ title: "Error Adding Domain", description: result.error, variant: "destructive" });
-    } else {
-      toast({ title: "Domain Added", description: `"${result.domainName}" has been added.`, variant: "default" });
-      fetchDomains();
+    setIsSubmitting(true);
+    try {
+      const response = await fetch('/api/custom-domains', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ domainName: newDomainName.trim() }),
+      });
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.message || 'Failed to add domain');
+      }
+      // const newDomain: CustomDomain = await response.json(); // Not needed if re-fetching
+      toast({ title: "Domain Added", description: `"${newDomainName.trim()}" has been added.` });
+      fetchDomains(); // Re-fetch to get the updated list including the new ID
       setNewDomainName('');
       setIsAddDialogOpen(false);
+    } catch (error: any) {
+      toast({ title: "Error Adding Domain", description: error.message, variant: "destructive" });
     }
+    setIsSubmitting(false);
   };
 
-  const handleDeleteDomain = (domainId: string, domainName: string) => {
-    if (deleteMockCustomDomain(domainId)) {
-      toast({ title: "Domain Deleted", description: `"${domainName}" has been deleted.`, variant: "default" });
-      fetchDomains();
-    } else {
-      toast({ title: "Error", description: "Could not delete domain.", variant: "destructive" });
+  const handleDeleteDomain = async (domainId: string, domainName: string) => {
+    setIsDeleting(domainId);
+    try {
+      const response = await fetch(`/api/custom-domains/${domainId}`, {
+        method: 'DELETE',
+      });
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.message || 'Failed to delete domain');
+      }
+      toast({ title: "Domain Deleted", description: `"${domainName}" has been deleted.` });
+      setDomains(prevDomains => prevDomains.filter(d => d.id !== domainId));
+    } catch (error: any) {
+      toast({ title: "Error", description: error.message, variant: "destructive" });
     }
+    setIsDeleting(null);
   };
 
-  const handleToggleVerify = (domainId: string, domainName: string) => {
-    const updatedDomain = toggleVerifyMockCustomDomain(domainId);
-    if (updatedDomain) {
+  const handleToggleVerify = async (domain: CustomDomain) => {
+    setIsVerifying(domain.id);
+    try {
+      const response = await fetch(`/api/custom-domains/${domain.id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ verified: !domain.verified }),
+      });
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.message || 'Failed to update verification status');
+      }
+      const updatedDomain: CustomDomain = await response.json();
       toast({
         title: "Verification Status Changed",
-        description: `"${domainName}" is now ${updatedDomain.verified ? 'verified' : 'unverified'}.`,
-        variant: "default"
+        description: `"${updatedDomain.domainName}" is now ${updatedDomain.verified ? 'verified' : 'unverified'}.`,
       });
-      fetchDomains();
+      // Update local state to reflect change immediately
+      setDomains(prevDomains => 
+        prevDomains.map(d => d.id === updatedDomain.id ? updatedDomain : d)
+      );
+    } catch (error: any) {
+      toast({ title: "Error Verifying Domain", description: error.message, variant: "destructive" });
     }
+    setIsVerifying(null);
   };
 
   const openEditDialog = (domain: CustomDomain) => {
@@ -100,21 +144,45 @@ export function CustomDomainsSettings() {
     setIsEditDialogOpen(true);
   };
 
-  const handleUpdateDomainName = () => {
+  const handleUpdateDomainName = async () => {
     if (!editingDomain || !editDomainNameInput.trim()) {
       toast({ title: "Error", description: "Domain name cannot be empty.", variant: "destructive" });
       return;
     }
-    const result = updateMockCustomDomainName(editingDomain.id, editDomainNameInput);
-    if ('error' in result) {
-      toast({ title: "Error Updating Domain", description: result.error, variant: "destructive" });
-    } else {
-      toast({ title: "Domain Updated", description: `Domain name changed to "${result.domainName}".`, variant: "default" });
-      fetchDomains();
+    if (editingDomain.domainName === editDomainNameInput.trim()) {
+        toast({ title: "No Changes", description: "The domain name is the same.", variant: "default" });
+        setIsEditDialogOpen(false);
+        setEditingDomain(null);
+        return;
+    }
+    setIsSubmitting(true);
+    try {
+      const response = await fetch(`/api/custom-domains/${editingDomain.id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ domainName: editDomainNameInput.trim() }),
+      });
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.message || 'Failed to update domain name');
+      }
+      const updatedDomain: CustomDomain = await response.json();
+      toast({ title: "Domain Updated", description: `Domain name changed to "${updatedDomain.domainName}".` });
+      // Update local state
+      setDomains(prevDomains => 
+        prevDomains.map(d => d.id === updatedDomain.id ? updatedDomain : d)
+      );
       setIsEditDialogOpen(false);
       setEditingDomain(null);
+    } catch (error: any) {
+      toast({ title: "Error Updating Domain", description: error.message, variant: "destructive" });
     }
+    setIsSubmitting(false);
   };
+
+  if (isLoading) {
+    return <div className="flex justify-center items-center p-10"><Loader2 className="h-8 w-8 animate-spin" /></div>;
+  }
 
   return (
     <Card>
@@ -141,12 +209,15 @@ export function CustomDomainsSettings() {
                   onChange={(e) => setNewDomainName(e.target.value)}
                   placeholder="yourbrand.co"
                   className="col-span-3"
+                  disabled={isSubmitting}
                 />
               </div>
             </div>
             <DialogFooter>
-              <DialogClose asChild><Button variant="outline">Cancel</Button></DialogClose>
-              <Button onClick={handleAddDomain}>Add Domain</Button>
+              <DialogClose asChild><Button variant="outline" disabled={isSubmitting}>Cancel</Button></DialogClose>
+              <Button onClick={handleAddDomain} disabled={isSubmitting || !newDomainName.trim()}>
+                {isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />} Add Domain
+              </Button>
             </DialogFooter>
           </DialogContent>
         </Dialog>
@@ -171,8 +242,8 @@ export function CustomDomainsSettings() {
                    <p className="text-xs text-muted-foreground">Added: {new Date(domain.createdAt).toLocaleDateString()}</p>
                 </div>
                 <div className="space-x-2 flex-shrink-0 self-start sm:self-center">
-                  <Button variant="outline" size="sm" onClick={() => handleToggleVerify(domain.id, domain.domainName)}>
-                    {domain.verified ? "Mark Unverified" : "Mark Verified"}
+                  <Button variant="outline" size="sm" onClick={() => handleToggleVerify(domain)} disabled={isVerifying === domain.id}>
+                    {isVerifying === domain.id ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : (domain.verified ? "Mark Unverified" : "Mark Verified")}
                   </Button>
                   <Dialog open={isEditDialogOpen && editingDomain?.id === domain.id} onOpenChange={(isOpen) => { if(!isOpen) setEditingDomain(null); setIsEditDialogOpen(isOpen);}}>
                     <DialogTrigger asChild>
@@ -192,12 +263,15 @@ export function CustomDomainsSettings() {
                                 value={editDomainNameInput}
                                 onChange={(e) => setEditDomainNameInput(e.target.value)}
                                 className="col-span-3"
+                                disabled={isSubmitting}
                             />
                             </div>
                         </div>
                         <DialogFooter>
-                            <DialogClose asChild><Button variant="outline">Cancel</Button></DialogClose>
-                            <Button onClick={handleUpdateDomainName}>Save Changes</Button>
+                            <DialogClose asChild><Button variant="outline" disabled={isSubmitting}>Cancel</Button></DialogClose>
+                            <Button onClick={handleUpdateDomainName} disabled={isSubmitting || !editDomainNameInput.trim() || editDomainNameInput.trim() === editingDomain.domainName}>
+                                {isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />} Save Changes
+                            </Button>
                         </DialogFooter>
                         </DialogContent>
                      )}
@@ -205,8 +279,8 @@ export function CustomDomainsSettings() {
 
                   <AlertDialog>
                     <AlertDialogTrigger asChild>
-                      <Button variant="ghost" size="icon" className="text-destructive hover:text-destructive-foreground hover:bg-destructive">
-                        <Trash2 className="h-4 w-4" />
+                      <Button variant="ghost" size="icon" className="text-destructive hover:text-destructive-foreground hover:bg-destructive" disabled={isDeleting === domain.id}>
+                        {isDeleting === domain.id ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
                       </Button>
                     </AlertDialogTrigger>
                     <AlertDialogContent>

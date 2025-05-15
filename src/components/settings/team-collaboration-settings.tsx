@@ -2,14 +2,8 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
-import type { TeamMember, UserProfile } from '@/types';
-import {
-  getMockTeamMembers,
-  addMockTeamMember,
-  deleteMockTeamMember,
-  updateMockTeamMemberRole,
-  getMockCurrentUserProfile,
-} from '@/lib/mock-data';
+import type { TeamMember, UserProfile } from '@/types'; // UserProfile might be needed for currentUser
+// Removed mock data imports
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -40,77 +34,127 @@ import {
   AlertDialogTrigger,
 } from '@/components/ui/alert-dialog';
 import { Separator } from '../ui/separator';
-import { Badge } from '@/components/ui/badge'; // Added import for Badge
+import { Badge } from '@/components/ui/badge';
+
+// Extended TeamMember type to include teamMembershipId from the service layer
+interface ClientTeamMember extends TeamMember {
+  teamMembershipId: string;
+}
 
 const roles: TeamMember['role'][] = ['admin', 'editor', 'viewer'];
 
 export function TeamCollaborationSettings() {
   const { toast } = useToast();
-  const [teamMembers, setTeamMembers] = useState<TeamMember[]>([]);
+  const [teamMembers, setTeamMembers] = useState<ClientTeamMember[]>([]);
   const [isInviteDialogOpen, setIsInviteDialogOpen] = useState(false);
   const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
   const [inviteEmail, setInviteEmail] = useState('');
   const [inviteRole, setInviteRole] = useState<TeamMember['role']>(roles[2]); // Default to 'viewer'
-  const [editingMember, setEditingMember] = useState<TeamMember | null>(null);
+  const [editingMember, setEditingMember] = useState<ClientTeamMember | null>(null);
   const [editingRole, setEditingRole] = useState<TeamMember['role']>(roles[2]);
-  const [currentUser, setCurrentUser] = useState<UserProfile | null>(null);
+  const [currentUser, setCurrentUser] = useState<UserProfile | null>(null); // To identify 'You'
 
-
-  const fetchTeamMembers = useCallback(() => {
-    setTeamMembers(getMockTeamMembers());
-  }, []);
+  const fetchTeamMembers = useCallback(async () => {
+    try {
+      const response = await fetch('/api/team');
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({ message: 'Failed to fetch team members' }));
+        throw new Error(errorData.message);
+      }
+      const data = await response.json();
+      setTeamMembers(data as ClientTeamMember[]); 
+    } catch (error: any) {
+      toast({ title: 'Error', description: error.message || 'Could not fetch team members.', variant: 'destructive' });
+      setTeamMembers([]);
+    }
+  }, [toast]);
   
   useEffect(() => {
-    setCurrentUser(getMockCurrentUserProfile());
+    // Fetch current user profile (e.g., from a separate endpoint or session hook)
+    // For now, we'll simulate it. Replace with actual current user fetching logic.
+    const fetchCurrentUser = async () => {
+        try {
+            // Example: fetch('/api/user/profile').then(res => res.json()).then(setCurrentUser);
+            // This is a placeholder. You should have a robust way to get the current user's profile.
+            const sessionRes = await fetch('/api/auth/session'); // Standard NextAuth endpoint
+            if (sessionRes.ok) {
+                const sessionData = await sessionRes.json();
+                if (sessionData && sessionData.user) {
+                    setCurrentUser(sessionData.user as UserProfile);
+                }
+            }
+        } catch (e) { console.error("Failed to fetch current user for UI", e);}
+    };
+    fetchCurrentUser();
     fetchTeamMembers();
   }, [fetchTeamMembers]);
 
 
-  const handleInviteMember = () => {
+  const handleInviteMember = async () => {
     if (!inviteEmail.trim() || !/\S+@\S+\.\S+/.test(inviteEmail.trim())) {
-      toast({ title: 'Error', description: 'Please enter a valid email address.', variant: 'destructive' });
+      toast({ title: 'Validation Error', description: 'Please enter a valid email address.', variant: 'destructive' });
       return;
     }
-    const result = addMockTeamMember(inviteEmail.trim(), inviteRole);
-    if ('error' in result) {
-      toast({ title: 'Error Inviting Member', description: result.error, variant: 'destructive' });
-    } else {
+    try {
+      const response = await fetch('/api/team', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: inviteEmail.trim(), role: inviteRole }),
+      });
+      const result = await response.json();
+      if (!response.ok) {
+        throw new Error(result.message || 'Failed to invite member');
+      }
       toast({ title: 'Member Invited', description: `${result.email} has been invited as a ${result.role}.`, variant: 'default' });
       fetchTeamMembers();
       setIsInviteDialogOpen(false);
       setInviteEmail('');
       setInviteRole(roles[2]);
+    } catch (error: any) {
+      toast({ title: 'Error Inviting Member', description: error.message, variant: 'destructive' });
     }
   };
 
-  const openEditDialog = (member: TeamMember) => {
+  const openEditDialog = (member: ClientTeamMember) => {
     setEditingMember(member);
     setEditingRole(member.role);
     setIsEditDialogOpen(true);
   };
 
-  const handleUpdateRole = () => {
+  const handleUpdateRole = async () => {
     if (!editingMember) return;
-    const result = updateMockTeamMemberRole(editingMember.id, editingRole);
-     if ('error' in result) {
-      toast({ title: 'Error Updating Role', description: result.error, variant: 'destructive' });
-    } else {
+    try {
+      const response = await fetch(`/api/team/${editingMember.teamMembershipId}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ role: editingRole }),
+      });
+      const result = await response.json();
+      if (!response.ok) {
+        throw new Error(result.message || 'Failed to update role');
+      }
       toast({ title: 'Role Updated', description: `${result.fullName}'s role updated to ${result.role}.`, variant: 'default' });
       fetchTeamMembers();
       setIsEditDialogOpen(false);
       setEditingMember(null);
+    } catch (error: any) {
+      toast({ title: 'Error Updating Role', description: error.message, variant: 'destructive' });
     }
   };
 
-  const handleDeleteMember = (memberId: string, memberName: string) => {
-    const result = deleteMockTeamMember(memberId);
-    if ('error' in result) {
-        toast({ title: 'Error Deleting Member', description: result.error, variant: 'destructive' });
-    } else if (result) {
-      toast({ title: 'Member Removed', description: `${memberName} has been removed from the team.`, variant: 'default' });
+  const handleDeleteMember = async (member: ClientTeamMember) => {
+    try {
+      const response = await fetch(`/api/team/${member.teamMembershipId}`, {
+        method: 'DELETE',
+      });
+      const result = await response.json(); 
+      if (!response.ok) {
+        throw new Error(result.message || 'Failed to remove member');
+      }
+      toast({ title: 'Member Removed', description: `${member.fullName} has been removed from the team.`, variant: 'default' });
       fetchTeamMembers();
-    } else {
-       toast({ title: 'Error Deleting Member', description: 'Could not remove the member.', variant: 'destructive' });
+    } catch (error: any) {
+      toast({ title: 'Error Removing Member', description: error.message, variant: 'destructive' });
     }
   };
 
@@ -172,18 +216,18 @@ export function TeamCollaborationSettings() {
         {teamMembers.length > 0 ? (
           <ul className="space-y-4">
             {teamMembers.map((member) => (
-              <li key={member.id} className="flex flex-col sm:flex-row justify-between items-start sm:items-center p-4 border rounded-lg shadow-sm">
+              <li key={member.teamMembershipId} className="flex flex-col sm:flex-row justify-between items-start sm:items-center p-4 border rounded-lg shadow-sm">
                 <div className="flex items-center gap-3 mb-3 sm:mb-0">
                   <Avatar className="h-10 w-10">
                     <AvatarImage 
-                        src={member.avatarUrl || `https://picsum.photos/seed/${member.email}/40/40`} 
-                        alt={member.fullName}
-                        data-ai-hint={member.avatarUrl?.includes('picsum.photos') || !member.avatarUrl ? "avatar user" : undefined}
+                        src={member.avatarUrl || undefined} 
+                        alt={member.fullName || 'User'}
                     />
-                    <AvatarFallback>{member.fullName.substring(0, 2).toUpperCase()}</AvatarFallback>
+                    <AvatarFallback>{member.fullName ? member.fullName.substring(0, 2).toUpperCase() : 'U'}</AvatarFallback>
                   </Avatar>
                   <div>
                     <span className="font-semibold text-foreground">{member.fullName}</span>
+                    {/* member.id is the userId of the team member. currentUser.id is the logged-in user.*/}
                     {member.id === currentUser?.id && <span className="text-xs text-primary ml-1">(You)</span>}
                     <p className="text-sm text-muted-foreground">{member.email}</p>
                   </div>
@@ -192,6 +236,7 @@ export function TeamCollaborationSettings() {
                   <Badge variant={member.role === 'admin' ? 'default' : 'secondary'} className="capitalize text-xs px-2 py-1">
                     {member.role}
                   </Badge>
+                  {/* Allow editing/removing if the member is not the current logged-in user */}
                   {member.id !== currentUser?.id && (
                     <>
                     <Button variant="outline" size="sm" onClick={() => openEditDialog(member)}>
@@ -212,7 +257,7 @@ export function TeamCollaborationSettings() {
                         </AlertDialogHeader>
                         <AlertDialogFooter>
                             <AlertDialogCancel>Cancel</AlertDialogCancel>
-                            <AlertDialogAction onClick={() => handleDeleteMember(member.id, member.fullName)} className="bg-destructive hover:bg-destructive/90">
+                            <AlertDialogAction onClick={() => handleDeleteMember(member)} className="bg-destructive hover:bg-destructive/90">
                             Remove Member
                             </AlertDialogAction>
                         </AlertDialogFooter>
@@ -220,9 +265,10 @@ export function TeamCollaborationSettings() {
                     </AlertDialog>
                     </>
                   )}
+                   {/* If the member IS the current user, and they are NOT an admin, show a message */}
                    {member.id === currentUser?.id && member.role !== 'admin' && (
                      <Badge variant="outline" className="border-amber-500 text-amber-600">
-                       <ShieldAlert className="mr-1 h-3 w-3" /> Contact admin to change your role
+                       <ShieldAlert className="mr-1 h-3 w-3" /> Contact team owner to change your role.
                      </Badge>
                    )}
                 </div>
@@ -234,7 +280,6 @@ export function TeamCollaborationSettings() {
         )}
       </CardContent>
 
-      {/* Edit Role Dialog */}
       <Dialog open={isEditDialogOpen} onOpenChange={setIsEditDialogOpen}>
         <DialogContent>
           <DialogHeader>
