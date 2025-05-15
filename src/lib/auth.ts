@@ -101,7 +101,7 @@ export const authOptions: NextAuthOptions = {
           id: userId!,
           name: user.name,
           email: user.email,
-          image: user.image,
+          // image: user.image, // Omitted to prevent large base64 strings in JWT
         } as NextAuthUser;
       },
     }),
@@ -113,12 +113,15 @@ export const authOptions: NextAuthOptions = {
     async jwt({ token, user }) {
       if (user) {
         token.id = user.id;
+        // If you were also adding user.image to the token here, remove it too.
       }
       return token;
     },
     async session({ session, token }) {
       if (session.user && token.id) {
         (session.user as NextAuthUser & { id: string }).id = token.id as string;
+        // Note: session.user.image will be undefined here unless populated from another source
+        // If you need an image URL, it's better to have a separate API endpoint or a URL in the DB
       }
       return session;
     },
