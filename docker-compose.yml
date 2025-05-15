@@ -1,0 +1,74 @@
+
+version: '3.8'
+
+services:
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: shorten_it_app
+    # Remove direct port mapping, Traefik will handle this
+    # ports:
+    #   - "3000:3000"
+    depends_on:
+      - db
+    env_file:
+      - .env 
+    environment:
+      - NODE_ENV=production
+      - PORT=3000 
+      # POSTGRES_URL should be in your .env file, e.g.:
+      # POSTGRES_URL=postgresql://user:password@db:5432/shorten_it_db
+      # DB_TYPE=postgres # Should also be in .env
+    restart: unless-stopped
+    networks:
+      - shorten_it_network
+      # - traefik_public # Add this if Traefik is on a separate external network
+    labels:
+      # Traefik specific labels
+      - "traefik.enable=true"
+      # HTTP Router definition
+      - "traefik.http.routers.shorten-it-app-http.rule=Host(`lnker.me`)" # Replace lnker.me with your actual domain
+      - "traefik.http.routers.shorten-it-app-http.entrypoints=web"
+      # Optional: Redirect HTTP to HTTPS (if Traefik handles HTTP entrypoint)
+      - "traefik.http.routers.shorten-it-app-http.middlewares=redirect-to-https@docker"
+      
+      # HTTPS Router definition
+      - "traefik.http.routers.shorten-it-app-https.rule=Host(`lnker.me`)" # Replace lnker.me with your actual domain
+      - "traefik.http.routers.shorten-it-app-https.entrypoints=websecure"
+      - "traefik.http.routers.shorten-it-app-https.tls=true"
+      - "traefik.http.routers.shorten-it-app-https.tls.certresolver=myresolver" # Replace myresolver with your Traefik Let's Encrypt resolver name
+      
+      # Service definition for Traefik
+      - "traefik.http.services.shorten-it-app.loadbalancer.server.port=3000" # Your Next.js app runs on port 3000 inside the container
+      
+      # Optional: Middleware for redirecting HTTP to HTTPS (define this middleware in Traefik's static config or another docker-compose file)
+      # This assumes you have a middleware named 'redirect-to-https' defined elsewhere in Traefik's configuration
+      # For example, in Traefik's docker-compose or static config:
+      # labels:
+      #   - "traefik.http.middlewares.redirect-to-https.redirectscheme.scheme=https"
+      #   - "traefik.http.middlewares.redirect-to-https.redirectscheme.permanent=true"
+
+db:
+  image: postgres:15-alpine 
+  container_name: shorten_it_db
+  environment:
+    POSTGRES_USER: ${POSTGRES_USER:-user} 
+    POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-password} 
+    POSTGRES_DB: ${POSTGRES_DB:-shorten_it_db} 
+  volumes:
+    - postgres_data:/var/lib/postgresql/data 
+  ports:
+    - "5432:5432" 
+  restart: unless-stopped
+  networks:
+    - shorten_it_network
+
+networks:
+  shorten_it_network:
+    driver: bridge
+  # traefik_public: # Define this if Traefik uses an external network
+  #   external: true
+
+volumes:
+  postgres_data:
