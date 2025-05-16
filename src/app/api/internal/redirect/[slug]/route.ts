@@ -45,6 +45,7 @@ function isValidHttpUrl(url: string | null | undefined): boolean {
 }
 
 export async function GET(request: NextRequest, context: { params?: { slug?: string } }) {
+  console.log('!!!!!! MEGA DEBUG: REDIRECT ROUTE GET HANDLER ENTERED !!!!!!');
   console.log('[RedirectRouteV10-NoGeoIP] Entered GET handler.');
 
   const resolvedParams = await Promise.resolve(context.params);
@@ -72,12 +73,13 @@ export async function GET(request: NextRequest, context: { params?: { slug?: str
       console.log('[RedirectRouteV10-NoGeoIP] Link ' + link.id + ': Determined targetUrl = ' + targetUrl + ', nextIndexToSave = ' + nextIndexToSave);
 
       if (targetUrl && isValidHttpUrl(targetUrl)) {
+        console.log('!!!!!! MEGA DEBUG: Just before incrementLinkClickCount for link ID: ' + link.id);
         incrementLinkClickCount(link.id).catch(err => {
           console.error('[RedirectRouteV10-NoGeoIP] Error incrementing click count for link ' + link.id + ':', err);
         });
 
         if (typeof nextIndexToSave === 'number') {
-          console.log('[RedirectRouteV10-NoGeoIP] Attempting to update lastUsedTargetIndex for link ' + link.id + ' to ' + nextIndexToSave + '. Current value in fetched link object: ' + link.lastUsedTargetIndex);
+          console.log('!!!!!! MEGA DEBUG: Just before updateLinkLastUsedTarget for link ID: ' + link.id + ' with index: ' + nextIndexToSave);
           updateLinkLastUsedTarget(link.id, nextIndexToSave).catch(err => {
             console.error('[RedirectRouteV10-NoGeoIP] Error updating last used target index for link ' + link.id + ':', err);
           });
@@ -112,7 +114,7 @@ export async function GET(request: NextRequest, context: { params?: { slug?: str
             const response = await fetch(targetUrl);
             if (!response.ok) {
                 console.warn('[RedirectRouteV10-NoGeoIP] Cloak fetch failed with status ' + response.status + ' for ' + targetUrl);
-                return NextResponse.redirect(new URL(targetUrl), { status: 301 }); 
+                return NextResponse.redirect(new URL(targetUrl), { status: 307 }); 
             }
             const body = await response.text();
             const headers = new Headers(response.headers);
@@ -125,11 +127,11 @@ export async function GET(request: NextRequest, context: { params?: { slug?: str
             });
           } catch (e) {
             console.error('[RedirectRouteV10-NoGeoIP] Cloaking fetch error for ' + targetUrl + ':', e);
-            return NextResponse.redirect(new URL(targetUrl), { status: 301 });
+            return NextResponse.redirect(new URL(targetUrl), { status: 307 });
           }
         }
         console.log('[RedirectRouteV10-NoGeoIP] Redirecting to ' + targetUrl);
-        return NextResponse.redirect(new URL(targetUrl), { status: 301 });
+        return NextResponse.redirect(new URL(targetUrl), { status: 307 });
 
       } else { 
         console.warn('[RedirectRouteV10-NoGeoIP] Invalid or missing target URL determined for slug ' + slug + '. Link data: ' + JSON.stringify(link));
