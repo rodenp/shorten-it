@@ -45,7 +45,6 @@ function isValidHttpUrl(url: string | null | undefined): boolean {
 }
 
 export async function GET(request: NextRequest, context: { params?: { slug?: string } }) {
-  console.log('!!!!!! MEGA DEBUG: REDIRECT ROUTE GET HANDLER ENTERED !!!!!!');
   console.log('[RedirectRouteV10-NoGeoIP] Entered GET handler.');
 
   const resolvedParams = await Promise.resolve(context.params);
