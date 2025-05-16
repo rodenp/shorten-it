@@ -3,6 +3,20 @@ import { NextResponse, type NextRequest } from 'next/server';
 import { DEFAULT_LOGIN_REDIRECT, authRoutes, publicRoutes, protectedAppRoutesPrefixes } from "@/lib/auth-routes";
 import { withAuth } from 'next-auth/middleware';
 
+const IS_DEBUG_LOGGING_ENABLED = process.env.DEBUG_LOGGING === 'true';
+
+function debugLog(...args: any[]) {
+  if (IS_DEBUG_LOGGING_ENABLED) {
+    console.log(...args);
+  }
+}
+
+function debugWarn(...args: any[]) {
+  if (IS_DEBUG_LOGGING_ENABLED) {
+    console.warn(...args);
+  }
+}
+
 const nextAuthMiddleware = withAuth({
   pages: {
     signIn: '/login',
@@ -29,7 +43,7 @@ const nextAuthMiddleware = withAuth({
 });
 
 export async function middleware(request: NextRequest) {
-  console.log("RUNNING LATEST MIDDLEWARE - Firebase Studio V6 Host Detection"); 
+  debugLog("RUNNING LATEST MIDDLEWARE - Firebase Studio V6 Host Detection"); 
 
   const { pathname, search } = request.nextUrl;
   const originalRequestUrl = request.url;
@@ -54,74 +68,71 @@ export async function middleware(request: NextRequest) {
           determinedHostForLog = 'Error/Unavailable';
       }
   }
-  // Log pathname at the start
-  console.log(`[MiddlewareV6 - ENTRY] Request for pathname: '${pathname}'. Determined host: ${hostname} (from ${determinedHostForLog})`);
+  debugLog(`[MiddlewareV6 - ENTRY] Request for pathname: '${pathname}'. Determined host: ${hostname} (from ${determinedHostForLog})`);
 
   if (
     pathname.startsWith('/_next') ||
     pathname.startsWith('/static') || 
     ['/favicon.ico', '/manifest.json', '/robots.txt'].includes(pathname)
   ) {
-    console.log(`[MiddlewareV6-DEBUG] Path '${pathname}' is a static/framework asset. Calling NextResponse.next().`);
+    debugLog(`[MiddlewareV6-DEBUG] Path '${pathname}' is a static/framework asset. Calling NextResponse.next().`);
     return NextResponse.next();
   }
 
   if (pathname.startsWith('/api/internal/redirect/')) {
-    console.log(`[MiddlewareV6-DEBUG] Path '${pathname}' is internal redirect API. Calling NextResponse.next().`);
+    debugLog(`[MiddlewareV6-DEBUG] Path '${pathname}' is internal redirect API. Calling NextResponse.next().`);
     return NextResponse.next();
   }
 
   if (pathname.startsWith('/api/')) { 
     if (pathname.startsWith('/api/auth/')) {
-        console.log(`[MiddlewareV6-DEBUG] Path '${pathname}' is an auth API. Passing to nextAuthMiddleware.`);
+        debugLog(`[MiddlewareV6-DEBUG] Path '${pathname}' is an auth API. Passing to nextAuthMiddleware.`);
         // @ts-ignore 
         return nextAuthMiddleware(request); 
     } else {
-        console.log(`[MiddlewareV6-DEBUG] Path '${pathname}' is a non-auth, non-internal-redirect API. Calling NextResponse.next().`);
+        debugLog(`[MiddlewareV6-DEBUG] Path '${pathname}' is a non-auth, non-internal-redirect API. Calling NextResponse.next().`);
         return NextResponse.next(); 
     }
   }
   
-  // Crucial check point for any path that isn't static or an API path handled above
-  console.log(`[MiddlewareV6 - PRE-SLUG-CHECK] Pathname: '${pathname}'. Evaluating if it is a slug.`);
+  debugLog(`[MiddlewareV6 - PRE-SLUG-CHECK] Pathname: '${pathname}'. Evaluating if it is a slug.`);
 
   const isAppRoute = protectedAppRoutesPrefixes.some(prefix => pathname.startsWith(prefix));
   const isAuthRoutePage = authRoutes.includes(pathname);
   
-  console.log(`[MiddlewareV6 - PRE-SLUG-VARS] For pathname '${pathname}': isAppRoute=${isAppRoute}, isAuthRoutePage=${isAuthRoutePage}`);
+  debugLog(`[MiddlewareV6 - PRE-SLUG-VARS] For pathname '${pathname}': isAppRoute=${isAppRoute}, isAuthRoutePage=${isAuthRoutePage}`);
 
-  // SLUG REWRITE BLOCK 
   if (
     pathname && 
     pathname !== '/' && 
     !isAppRoute && 
     !isAuthRoutePage 
   ) {
-    console.log(`[MiddlewareV6-DEBUG] Pathname '${pathname}' ENTERED SLUG REWRITE Block's main IF condition.`);
+    debugLog(`[MiddlewareV6-DEBUG] Pathname '${pathname}' ENTERED SLUG REWRITE Block's main IF condition.`);
     const slug = decodeURIComponent(pathname.substring(1));
 
     if (slug) {
-      console.log(`[MiddlewareV6-DEBUG] Slug detected: '${slug}' for pathname '${pathname}'. Preparing to rewrite.`);
+      debugLog(`[MiddlewareV6-DEBUG] Slug detected: '${slug}' for pathname '${pathname}'. Preparing to rewrite.`);
       const rewriteUrl = new URL(`/api/internal/redirect/${slug}${search}`, originalRequestUrl);
       
       const newHeaders = new Headers(request.headers);
       if (typeof hostname === 'string' && hostname) { 
         newHeaders.set('x-original-host', hostname);
       } else {
-        console.warn('[MiddlewareV6] hostname is invalid or missing for slug rewrite, NOT setting x-original-host.');
+        debugWarn('[MiddlewareV6] hostname is invalid or missing for slug rewrite, NOT setting x-original-host.');
       }
       newHeaders.set('x-link-redirect-lookup', 'true');
 
-      console.log(`[MiddlewareV6-ACTION] REWRITING slug '${slug}' for pathname '${pathname}' to: ${rewriteUrl.toString()}`);
+      debugLog(`[MiddlewareV6-ACTION] REWRITING slug '${slug}' for pathname '${pathname}' to: ${rewriteUrl.toString()}`);
       return NextResponse.rewrite(rewriteUrl, { request: { headers: newHeaders } });
     } else {
-      console.warn(`[MiddlewareV6-DEBUG] Pathname '${pathname}' entered slug block, but extracted slug was empty. Passing to nextAuthMiddleware.`);
+      debugWarn(`[MiddlewareV6-DEBUG] Pathname '${pathname}' entered slug block, but extracted slug was empty. Passing to nextAuthMiddleware.`);
       // @ts-ignore 
       return nextAuthMiddleware(request);
     }
   } 
   
-  console.log(`[MiddlewareV6-DEBUG] Pathname '${pathname}' did NOT enter SLUG REWRITE Block's main IF. Passing to nextAuthMiddleware for default auth protection/handling.`);
+  debugLog(`[MiddlewareV6-DEBUG] Pathname '${pathname}' did NOT enter SLUG REWRITE Block's main IF. Passing to nextAuthMiddleware for default auth protection/handling.`);
   // @ts-ignore 
   return nextAuthMiddleware(request);
 }

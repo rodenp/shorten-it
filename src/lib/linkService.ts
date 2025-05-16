@@ -4,11 +4,25 @@ import { LinkItem, LinkTarget, RetargetingPixel } from '@/types';
 import { v4 as uuidv4 } from 'uuid';
 import { getShortenerDomain } from './mock-data'; 
 
+const IS_DEBUG_LOGGING_ENABLED = process.env.DEBUG_LOGGING === 'true';
+
+function debugLog(...args: any[]) {
+  if (IS_DEBUG_LOGGING_ENABLED) {
+    console.log(...args);
+  }
+}
+
+function debugWarn(...args: any[]) {
+  if (IS_DEBUG_LOGGING_ENABLED) {
+    console.warn(...args);
+  }
+}
+
 // Add a top-level log to see initial values when linkService.ts is imported/run
-console.log(`[linkService - Global] Initial DB_TYPE: ${DB_TYPE}, pool object initialized: ${!!pool}`);
+debugLog(`[linkService - Global] Initial DB_TYPE: ${DB_TYPE}, pool object initialized: ${!!pool}`);
 
 if (DB_TYPE !== 'postgres' && pool) {
-  console.warn(`[linkService - Global] Warning: DB_TYPE is ${DB_TYPE} but PostgreSQL pool is initialized. This might indicate an issue in db.ts or env config.`);
+  debugWarn(`[linkService - Global] Warning: DB_TYPE is ${DB_TYPE} but PostgreSQL pool is initialized. This might indicate an issue in db.ts or env config.`);
 } else if (DB_TYPE === 'postgres' && !pool) {
   console.error('[linkService - Global] Error: DB_TYPE is postgres but PostgreSQL pool is NOT initialized. Check db.ts and POSTGRES_URI.');
 }
@@ -18,8 +32,7 @@ async function getRetargetingPixelsForLink(linkId: string): Promise<RetargetingP
         console.error('[linkService - getRetargetingPixelsForLink] PostgreSQL not configured.');
         return []; 
     }
-    // Added logging for the specific call
-    console.log(`[linkService - getRetargetingPixelsForLink] Fetching pixels for linkId: ${linkId}`);
+    debugLog(`[linkService - getRetargetingPixelsForLink] Fetching pixels for linkId: ${linkId}`);
     const query = `
         SELECT rp.id, rp."userId", rp.name, rp.type, rp."pixelIdValue", rp."createdAt", rp."updatedAt"
         FROM retargeting_pixels rp
@@ -28,7 +41,7 @@ async function getRetargetingPixelsForLink(linkId: string): Promise<RetargetingP
     `;
     try {
         const result = await pool.query(query, [linkId]);
-        console.log(`[linkService - getRetargetingPixelsForLink] Found ${result.rowCount} pixels for linkId: ${linkId}`);
+        debugLog(`[linkService - getRetargetingPixelsForLink] Found ${result.rowCount} pixels for linkId: ${linkId}`);
         return result.rows.map(row => ({
             id: row.id,
             userId: row.userId,
@@ -40,7 +53,7 @@ async function getRetargetingPixelsForLink(linkId: string): Promise<RetargetingP
         }));
     } catch (err) {
         console.error(`[linkService - getRetargetingPixelsForLink] Error fetching pixels for linkId ${linkId}:`, err);
-        throw err; // Re-throw error to allow caller to handle if necessary
+        throw err; 
     }
 }
 
@@ -71,7 +84,7 @@ function formatLinkItem(row: any, pixels?: RetargetingPixel[]): LinkItem {
 }
 
 export async function getLinkById(id: string, userId: string): Promise<LinkItem | null> {
-  console.log(`[linkService - getLinkById] DB_TYPE: ${DB_TYPE}, pool initialized: ${!!pool}. Fetching linkId: ${id} for userId: ${userId}`);
+  debugLog(`[linkService - getLinkById] DB_TYPE: ${DB_TYPE}, pool initialized: ${!!pool}. Fetching linkId: ${id} for userId: ${userId}`);
   if (DB_TYPE !== 'postgres' || !pool) {
     console.error('[linkService - getLinkById] PostgreSQL not configured.');
     return null; 
@@ -88,10 +101,10 @@ export async function getLinkById(id: string, userId: string): Promise<LinkItem 
     `;
     const res = await pool.query(query, [id, userId]);
     if (res.rows.length === 0) {
-        console.log(`[linkService - getLinkById] No link found for id: ${id}, userId: ${userId}`);
+        debugLog(`[linkService - getLinkById] No link found for id: ${id}, userId: ${userId}`);
         return null;
     }
-    console.log(`[linkService - getLinkById] Link found for id: ${id}. Row:`, JSON.stringify(res.rows[0]));
+    debugLog(`[linkService - getLinkById] Link found for id: ${id}. Row:`, JSON.stringify(res.rows[0]));
     const linkRow = res.rows[0];
     const pixels = await getRetargetingPixelsForLink(linkRow.id);
     return formatLinkItem(linkRow, pixels);
@@ -103,7 +116,7 @@ export async function getLinkById(id: string, userId: string): Promise<LinkItem 
 }
 
 export async function getLinkBySlug(slug: string, userId: string): Promise<LinkItem | null> {
-  console.log(`[linkService - getLinkBySlug] DB_TYPE: ${DB_TYPE}, pool initialized: ${!!pool}. Fetching slug: ${slug} for userId: ${userId}`);
+  debugLog(`[linkService - getLinkBySlug] DB_TYPE: ${DB_TYPE}, pool initialized: ${!!pool}. Fetching slug: ${slug} for userId: ${userId}`);
   if (DB_TYPE !== 'postgres' || !pool) {
     console.error('[linkService - getLinkBySlug] PostgreSQL not configured.');
     return null;
@@ -120,10 +133,10 @@ export async function getLinkBySlug(slug: string, userId: string): Promise<LinkI
     `; 
     const res = await pool.query(query, [slug, userId]);
     if (res.rows.length === 0) {
-      console.log(`[linkService - getLinkBySlug] No link found for slug: ${slug}, userId: ${userId}`);
+      debugLog(`[linkService - getLinkBySlug] No link found for slug: ${slug}, userId: ${userId}`);
       return null;
     }
-    console.log(`[linkService - getLinkBySlug] Link found for slug: ${slug}. Row:`, JSON.stringify(res.rows[0]));
+    debugLog(`[linkService - getLinkBySlug] Link found for slug: ${slug}. Row:`, JSON.stringify(res.rows[0]));
     const linkRow = res.rows[0];
     const pixels = await getRetargetingPixelsForLink(linkRow.id);
     return formatLinkItem(linkRow, pixels);
@@ -135,7 +148,7 @@ export async function getLinkBySlug(slug: string, userId: string): Promise<LinkI
 }
 
 export async function getLinkBySlugAndDomain(slug: string, domain: string): Promise<LinkItem | null> {
-  console.log(`[linkService - getLinkBySlugAndDomain] DB_TYPE: ${DB_TYPE}, pool initialized: ${!!pool}. Fetching slug: ${slug}, domain: ${domain}`);
+  debugLog(`[linkService - getLinkBySlugAndDomain] DB_TYPE: ${DB_TYPE}, pool initialized: ${!!pool}. Fetching slug: ${slug}, domain: ${domain}`);
   if (DB_TYPE !== 'postgres' || !pool) {
     console.error('[linkService - getLinkBySlugAndDomain] PostgreSQL not configured for link redirection lookup.');
     return null; 
@@ -156,7 +169,7 @@ export async function getLinkBySlugAndDomain(slug: string, domain: string): Prom
       `;
       queryParams = [slug];
       if (isLocalhostDomainInput) {
-        console.log(`[linkService - getLinkBySlugAndDomain] Handling '${domain}' as a localhost domain. Searching for slug with no customDomainId.`);
+        debugLog(`[linkService - getLinkBySlugAndDomain] Handling '${domain}' as a localhost domain. Searching for slug with no customDomainId.`);
       }
     } else {
       query = `
@@ -171,10 +184,10 @@ export async function getLinkBySlugAndDomain(slug: string, domain: string): Prom
 
     const res = await pool.query(query, queryParams);
     if (res.rows.length === 0) {
-      console.log(`[linkService - getLinkBySlugAndDomain] No link found for slug: ${slug}, domain: ${domain}`);
+      debugLog(`[linkService - getLinkBySlugAndDomain] No link found for slug: ${slug}, domain: ${domain}`);
       return null;
     }
-    console.log(`[linkService - getLinkBySlugAndDomain] Link found for slug: ${slug}, domain: ${domain}. Row:`, JSON.stringify(res.rows[0]));
+    debugLog(`[linkService - getLinkBySlugAndDomain] Link found for slug: ${slug}, domain: ${domain}. Row:`, JSON.stringify(res.rows[0]));
     const linkRow = res.rows[0];
     let link = formatLinkItem(linkRow, []); 
 
@@ -196,7 +209,7 @@ export async function getLinkBySlugAndDomain(slug: string, domain: string): Prom
 
 
 export async function getLinksByUserId(userId: string): Promise<LinkItem[]> {
-  console.log(`[linkService - getLinksByUserId] DB_TYPE: ${DB_TYPE}, pool initialized: ${!!pool}. Fetching links for userId: ${userId}`);
+  debugLog(`[linkService - getLinksByUserId] DB_TYPE: ${DB_TYPE}, pool initialized: ${!!pool}. Fetching links for userId: ${userId}`);
   if (DB_TYPE !== 'postgres' || !pool) {
     console.error('[linkService - getLinksByUserId] PostgreSQL not configured.');
     return [];
@@ -212,7 +225,7 @@ export async function getLinksByUserId(userId: string): Promise<LinkItem[]> {
         WHERE l."userId" = $1 ORDER BY l."createdAt" DESC;
     `;
     const res = await pool.query(query, [userId]);
-    console.log(`[linkService - getLinksByUserId] Found ${res.rowCount} links for userId: ${userId}`);
+    debugLog(`[linkService - getLinksByUserId] Found ${res.rowCount} links for userId: ${userId}`);
     const links: LinkItem[] = [];
     for (const row of res.rows) {
         const pixels = await getRetargetingPixelsForLink(row.id);
@@ -227,8 +240,7 @@ export async function getLinksByUserId(userId: string): Promise<LinkItem[]> {
 
 
 const generateDbSlug = async (customDomainId?: string): Promise<string> => {
-  // Added entry logging
-  console.log(`[linkService - generateDbSlug] DB_TYPE: ${DB_TYPE}, pool initialized: ${!!pool}. Generating slug for customDomainId: ${customDomainId}`);
+  debugLog(`[linkService - generateDbSlug] DB_TYPE: ${DB_TYPE}, pool initialized: ${!!pool}. Generating slug for customDomainId: ${customDomainId}`);
   if (DB_TYPE !== 'postgres' || !pool) throw new Error("[linkService - generateDbSlug] Database pool not initialized for slug generation (requires PostgreSQL).");
   let slug = Math.random().toString(36).substring(2, 8);
   let query;
@@ -247,7 +259,7 @@ const generateDbSlug = async (customDomainId?: string): Promise<string> => {
     else params = [slug];
     res = await pool.query(query, params);
   }
-  console.log(`[linkService - generateDbSlug] Generated slug: ${slug}`);
+  debugLog(`[linkService - generateDbSlug] Generated slug: ${slug}`);
   return slug;
 };
 
@@ -267,7 +279,7 @@ interface CreateLinkData {
 }
 
 export async function createLink(data: CreateLinkData): Promise<LinkItem> {
-  console.log(`[linkService - createLink] DB_TYPE: ${DB_TYPE}, pool initialized: ${!!pool}. Creating link with title: ${data.title}`);
+  debugLog(`[linkService - createLink] DB_TYPE: ${DB_TYPE}, pool initialized: ${!!pool}. Creating link with title: ${data.title}`);
   if (DB_TYPE !== 'postgres' || !pool) {
     console.error('[linkService - createLink] PostgreSQL not configured, cannot create link.');
     throw new Error('Database not configured for link creation.');
@@ -343,11 +355,8 @@ export async function createLink(data: CreateLinkData): Promise<LinkItem> {
       createdPixels = await getRetargetingPixelsForLink(linkId);
     }
     await client.query('COMMIT');
-    console.log(`[linkService - createLink] Link created successfully with ID: ${linkId}`);
+    debugLog(`[linkService - createLink] Link created successfully with ID: ${linkId}`);
     const finalLink = formatLinkItem(newLinkRow, createdPixels);
-    // The shortUrl constructed with correct protocol and base is already in finalLink via formatLinkItem 
-    // if it was correctly set in newLinkRow.shortUrl when inserted. Let's ensure the DB value is used.
-    // No, formatLinkItem uses row.shortUrl which is from DB, so it is already correct.
     return finalLink;
   } catch (err: any) {
     await client.query('ROLLBACK');
@@ -362,7 +371,7 @@ export async function createLink(data: CreateLinkData): Promise<LinkItem> {
 }
 
 export async function updateLink(linkId: string, userId: string, updates: Partial<CreateLinkData> & { originalUrl?: string, targets?: LinkTarget[], lastUsedTargetIndex?: number | null }): Promise<LinkItem | null> {
-    console.log(`[linkService - updateLink] DB_TYPE: ${DB_TYPE}, pool initialized: ${!!pool}. Updating linkId: ${linkId}`);
+    debugLog(`[linkService - updateLink] DB_TYPE: ${DB_TYPE}, pool initialized: ${!!pool}. Updating linkId: ${linkId}`);
     if (DB_TYPE !== 'postgres' || !pool) {
         console.error('[linkService - updateLink] PostgreSQL not configured, cannot update link.');
         throw new Error('Database not configured for link update.');
@@ -390,7 +399,7 @@ export async function updateLink(linkId: string, userId: string, updates: Partia
             queryParams.push(new Date().toISOString()); 
             setClauses.push(`"updatedAt" = $${paramIndex++}`);
             const updateQuery = `UPDATE links SET ${setClauses.join(', ')} WHERE id = $1 AND "userId" = $2 RETURNING *, last_used_target_index;`;
-            console.log(`[linkService - updateLink] Executing update for linkId ${linkId} with query: ${updateQuery.substring(0, 100)}... and params: ${JSON.stringify(queryParams)}`);
+            debugLog(`[linkService - updateLink] Executing update for linkId ${linkId} with query: ${updateQuery.substring(0, 100)}... and params: ${JSON.stringify(queryParams)}`);
             await client.query(updateQuery, queryParams);
         }
         if (updates.retargetingPixelIds !== undefined) {
@@ -404,11 +413,11 @@ export async function updateLink(linkId: string, userId: string, updates: Partia
             if (setClauses.length === 0) await client.query('UPDATE links SET "updatedAt" = CURRENT_TIMESTAMP WHERE id = $1 AND "userId" = $2', [linkId, userId]);
         }
         if (!needsDbUpdate) {
-             console.log(`[linkService - updateLink] No actual DB update needed for linkId ${linkId}. Rolling back.`);
+             debugLog(`[linkService - updateLink] No actual DB update needed for linkId ${linkId}. Rolling back.`);
              await client.query('ROLLBACK'); client.release(); return getLinkById(linkId, userId); 
         }
         await client.query('COMMIT');
-        console.log(`[linkService - updateLink] Link updated successfully for linkId ${linkId}`);
+        debugLog(`[linkService - updateLink] Link updated successfully for linkId ${linkId}`);
         const updatedLinkDataRes = await client.query('SELECT l.*, l.last_used_target_index, cd."domainName" as "customDomainName", lg.name as "groupName" FROM links l LEFT JOIN custom_domains cd ON l."customDomainId" = cd.id LEFT JOIN link_groups lg ON l."groupId" = lg.id AND lg."userId" = l."userId" WHERE l.id = $1 AND l."userId" = $2', [linkId, userId]);
         if(updatedLinkDataRes.rows.length === 0) return null; 
         const pixels = await getRetargetingPixelsForLink(linkId);
@@ -423,7 +432,7 @@ export async function updateLink(linkId: string, userId: string, updates: Partia
 }
 
 export async function deleteLink(id: string, userId: string): Promise<boolean> {
-  console.log(`[linkService - deleteLink] DB_TYPE: ${DB_TYPE}, pool initialized: ${!!pool}. Deleting linkId: ${id}`);
+  debugLog(`[linkService - deleteLink] DB_TYPE: ${DB_TYPE}, pool initialized: ${!!pool}. Deleting linkId: ${id}`);
   if (DB_TYPE !== 'postgres' || !pool) {
     console.error('[linkService - deleteLink] PostgreSQL not configured, cannot delete link.');
     throw new Error('Database not configured for link deletion.');
@@ -435,11 +444,11 @@ export async function deleteLink(id: string, userId: string): Promise<boolean> {
     await client.query('DELETE FROM analytic_events WHERE "linkId" = $1', [id]);
     const res = await client.query('DELETE FROM links WHERE id = $1 AND "userId" = $2', [id, userId]);
     if (res.rowCount === 0) { 
-        console.warn(`[linkService - deleteLink] Link not found for deletion or user not authorized. LinkId: ${id}`);
+        debugWarn(`[linkService - deleteLink] Link not found for deletion or user not authorized. LinkId: ${id}`);
         await client.query('ROLLBACK'); return false; 
     }
     await client.query('COMMIT');
-    console.log(`[linkService - deleteLink] Link deleted successfully: ${id}`);
+    debugLog(`[linkService - deleteLink] Link deleted successfully: ${id}`);
     return true;
   } catch (err) {
     await client.query('ROLLBACK');
@@ -451,7 +460,7 @@ export async function deleteLink(id: string, userId: string): Promise<boolean> {
 }
 
 export async function incrementLinkClickCount(linkId: string): Promise<void> {
-    console.log(`[linkService - incrementLinkClickCount] DB_TYPE: ${DB_TYPE}, pool initialized: ${!!pool}. Incrementing click for linkId: ${linkId}`);
+    debugLog(`[linkService - incrementLinkClickCount] DB_TYPE: ${DB_TYPE}, pool initialized: ${!!pool}. Incrementing click for linkId: ${linkId}`);
     if (DB_TYPE !== 'postgres' || !pool) {
         console.error('[linkService - incrementLinkClickCount] PostgreSQL not configured for incrementing click count.');
         return;
@@ -459,9 +468,9 @@ export async function incrementLinkClickCount(linkId: string): Promise<void> {
     try {
         const result = await pool.query('UPDATE links SET "clickCount" = "clickCount" + 1, "updatedAt" = CURRENT_TIMESTAMP WHERE id = $1', [linkId]);
         if (result.rowCount > 0) {
-            console.log(`[linkService - incrementLinkClickCount] Click count incremented successfully for ${linkId}. Rows affected: ${result.rowCount}`);
+            debugLog(`[linkService - incrementLinkClickCount] Click count incremented successfully for ${linkId}. Rows affected: ${result.rowCount}`);
         } else {
-            console.warn(`[linkService - incrementLinkClickCount] Failed to increment click count for ${linkId}. Link not found or no change made. Row count: ${result.rowCount}`);
+            debugWarn(`[linkService - incrementLinkClickCount] Failed to increment click count for ${linkId}. Link not found or no change made. Row count: ${result.rowCount}`);
         }
     } catch (err) {
         console.error(`[linkService - incrementLinkClickCount] Error incrementing click count for linkId ${linkId}:`, err);
@@ -469,19 +478,18 @@ export async function incrementLinkClickCount(linkId: string): Promise<void> {
 }
 
 export async function updateLinkLastUsedTarget(linkId: string, index: number): Promise<void> {
-    console.log(`[linkService - updateLinkLastUsedTarget] DB_TYPE: ${DB_TYPE}, pool initialized: ${!!pool}. Updating last_used_target_index to ${index} for linkId ${linkId}`);
+    debugLog(`[linkService - updateLinkLastUsedTarget] DB_TYPE: ${DB_TYPE}, pool initialized: ${!!pool}. Updating last_used_target_index to ${index} for linkId ${linkId}`);
     if (DB_TYPE !== 'postgres' || !pool) {
         console.error('[linkService - updateLinkLastUsedTarget] PostgreSQL not configured for updating last used target index.');
         return; 
     }
     try {
-        // console.log(`[linkService - updateLinkLastUsedTarget] Attempting to update last_used_target_index to ${index} for linkId ${linkId}`); // This log is redundant with the one above
         const query = 'UPDATE links SET "last_used_target_index" = $1, "updatedAt" = CURRENT_TIMESTAMP WHERE id = $2 RETURNING id, last_used_target_index;';
         const result = await pool.query(query, [index, linkId]);
         if (result.rowCount > 0 && result.rows[0]) { 
-            console.log(`[linkService - updateLinkLastUsedTarget] Successfully updated last_used_target_index to ${result.rows[0].last_used_target_index} for link ${result.rows[0].id}. Rows affected: ${result.rowCount}`);
+            debugLog(`[linkService - updateLinkLastUsedTarget] Successfully updated last_used_target_index to ${result.rows[0].last_used_target_index} for link ${result.rows[0].id}. Rows affected: ${result.rowCount}`);
         } else {
-            console.warn(`[linkService - updateLinkLastUsedTarget] Failed to update last_used_target_index for link ${linkId}. Link not found or no change made. Row count: ${result.rowCount}`);
+            debugWarn(`[linkService - updateLinkLastUsedTarget] Failed to update last_used_target_index for link ${linkId}. Link not found or no change made. Row count: ${result.rowCount}`);
         }
     } catch (err) {
         console.error(`[linkService - updateLinkLastUsedTarget] Error in updateLinkLastUsedTarget for link ${linkId}:`, err);
