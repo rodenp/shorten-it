@@ -145,7 +145,9 @@ export async function getLinkBySlugAndDomain(slug: string, domain: string): Prom
     let queryParams;
     const defaultShortenerDomain = getShortenerDomain(); 
 
-    if (domain === defaultShortenerDomain) {
+    const isLocalhostDomainInput = domain.startsWith('localhost:'); 
+
+    if (domain === defaultShortenerDomain || isLocalhostDomainInput) {
       query = `
         SELECT l.*, l.last_used_target_index, 
                NULL as "customDomainName" 
@@ -153,6 +155,9 @@ export async function getLinkBySlugAndDomain(slug: string, domain: string): Prom
         WHERE l.slug = $1 AND l."customDomainId" IS NULL; 
       `;
       queryParams = [slug];
+      if (isLocalhostDomainInput) {
+        console.log(`[linkService - getLinkBySlugAndDomain] Handling '${domain}' as a localhost domain. Searching for slug with no customDomainId.`);
+      }
     } else {
       query = `
         SELECT l.*, l.last_used_target_index, 
@@ -174,15 +179,13 @@ export async function getLinkBySlugAndDomain(slug: string, domain: string): Prom
     let link = formatLinkItem(linkRow, []); 
 
     let protocol = 'https://';
-    if (!link.customDomain && process.env.NODE_ENV === 'development' && defaultShortenerDomain.startsWith('localhost:')) {
+    const effectiveDomain = link.customDomain || defaultShortenerDomain;
+    if (effectiveDomain.startsWith('localhost:')) {
         protocol = 'http://';
     }
 
-    if (link.customDomain) {
-        link.shortUrl = `${protocol}${link.customDomain}/${link.slug}`;
-    } else {
-        link.shortUrl = `${protocol}${defaultShortenerDomain}/${link.slug}`;
-    }
+    link.shortUrl = `${protocol}${effectiveDomain}/${link.slug}`;
+    
     return link;
 
   } catch (err) {
@@ -289,24 +292,26 @@ export async function createLink(data: CreateLinkData): Promise<LinkItem> {
         throw new Error(`Slug '${slugToUse}' is already taken${data.customDomainId ? ' on this domain' : ''}.`);
     }
 
-    let shortUrlBase = getShortenerDomain(); 
-    let customDomainName;
-    let protocol = 'https://'; 
+    let actualShortUrlBase: string;
+    let customDomainName; // This will be used for the returned LinkItem
 
     if (data.customDomainId) {
         const domainRes = await client.query('SELECT "domainName" FROM custom_domains WHERE id = $1 AND "userId" = $2', [data.customDomainId, data.userId]);
         if (domainRes.rows.length > 0) {
             customDomainName = domainRes.rows[0].domainName;
-            shortUrlBase = customDomainName;
+            actualShortUrlBase = customDomainName;
         } else {
             throw new Error('Custom domain not found or not authorized.');
         }
     } else {
-        if (process.env.NODE_ENV === 'development' && shortUrlBase.startsWith('localhost:')) {
-            protocol = 'http://';
-        }
+        actualShortUrlBase = getShortenerDomain();
     }
-    const shortUrl = `${protocol}${shortUrlBase}/${slugToUse}`; 
+
+    let protocol = 'https://'; 
+    if (actualShortUrlBase === 'localhost' || actualShortUrlBase.startsWith('localhost:')) {
+        protocol = 'http://';
+    }
+    const shortUrl = `${protocol}${actualShortUrlBase}/${slugToUse}`; 
 
     const linkQuery = `
       INSERT INTO links 
@@ -340,7 +345,9 @@ export async function createLink(data: CreateLinkData): Promise<LinkItem> {
     await client.query('COMMIT');
     console.log(`[linkService - createLink] Link created successfully with ID: ${linkId}`);
     const finalLink = formatLinkItem(newLinkRow, createdPixels);
-    finalLink.shortUrl = shortUrl; 
+    // The shortUrl constructed with correct protocol and base is already in finalLink via formatLinkItem 
+    // if it was correctly set in newLinkRow.shortUrl when inserted. Let's ensure the DB value is used.
+    // No, formatLinkItem uses row.shortUrl which is from DB, so it is already correct.
     return finalLink;
   } catch (err: any) {
     await client.query('ROLLBACK');
