@@ -1,84 +1,147 @@
-
+// src/app/api/internal/redirect/[slug]/route.ts
 import { NextResponse, type NextRequest } from 'next/server';
-import { getLinkBySlugAndDomain, incrementLinkClickCount } from '@/lib/linkService';
-import type { LinkItem } from '@/types'; // Ensure LinkItem is imported
+import {
+  getLinkBySlugAndDomain,
+  incrementLinkClickCount,
+  updateLinkLastUsedTarget,
+} from '@/lib/linkService';
+import { recordAnalyticEvent } from '@/lib/analyticsService';
+import type { LinkItem, AnalyticEvent } from '@/types';
 
-// Helper to determine the target URL from a link item
-function getTargetUrl(link: LinkItem): string | null {
-  if (link.abTestConfig && link.abTestConfig.enabled && link.targets && link.targets.length > 0) {
-    const totalWeight = link.targets.reduce((sum, target) => sum + (target.weight || 0), 0);
-    if (totalWeight === 0 && link.targets.length > 0) {
-        const randomIndex = Math.floor(Math.random() * link.targets.length);
-        return link.targets[randomIndex].url;
-    }
-    let randomNum = Math.random() * totalWeight;
-    for (const target of link.targets) {
-      if (randomNum < (target.weight || 0)) {
-        return target.url;
-      }
-      randomNum -= (target.weight || 0);
-    }
-    return link.targets[0]?.url || link.originalUrl; 
+// Determine target URL with rotation logic
+function determineTargetUrlAndIndex(link: LinkItem): { targetUrl: string | null; nextIndexToSave?: number } {
+  if (!link.targets || link.targets.length === 0) {
+    console.log('[RedirectRouteV10-NoGeoIP] No targets for link ' + link.id + '. Using originalUrl.');
+    return { targetUrl: link.originalUrl, nextIndexToSave: undefined }; 
   }
-  if (link.targets && link.targets.length > 0 && link.targets[0].url) {
-    return link.targets[0].url; 
+
+  console.log('[RedirectRouteV10-NoGeoIP] Link ' + link.id + ' targets received: ' + JSON.stringify(link.targets) + ' (Length: ' + link.targets.length + ')'); // Added log for targets array and its length
+
+  const currentKnownIndex =
+    typeof link.lastUsedTargetIndex === 'number' && link.lastUsedTargetIndex !== null 
+      ? link.lastUsedTargetIndex 
+      : -1;
+  console.log('[RedirectRouteV10-NoGeoIP] Link ' + link.id + ': lastUsedTargetIndex from DB = ' + link.lastUsedTargetIndex + ', currentKnownIndex = ' + currentKnownIndex);
+
+  const nextIndex = (currentKnownIndex + 1) % link.targets.length;
+  const selectedTarget = link.targets[nextIndex];
+  console.log('[RedirectRouteV10-NoGeoIP] Link ' + link.id + ': Calculated nextIndex = ' + nextIndex + ' (targets.length was ' + link.targets.length + ')'); // Added targets.length to this log too
+
+  if (selectedTarget?.url) {
+    return { targetUrl: selectedTarget.url, nextIndexToSave: nextIndex };
   }
-  return link.originalUrl || null; 
+  console.warn('[RedirectRouteV10-NoGeoIP] Selected target at index ' + nextIndex + ' for link ' + link.id + ' is invalid or missing URL. Falling back to originalUrl.');
+  return { targetUrl: link.originalUrl, nextIndexToSave: undefined }; 
 }
 
-export async function GET(request: NextRequest, { params }: { params: { slug: string } }) {
-  const slug = params.slug;
-  const originalHost = request.headers.get('x-original-host');
-  
-  if (!slug || !originalHost) {
-    // If essential information is missing, redirect to homepage or show a generic error
-    // This shouldn't happen if middleware is setting headers correctly.
-    return NextResponse.redirect(new URL('/', request.url)); 
+function isValidHttpUrl(url: string | null | undefined): boolean {
+  if (!url) return false;
+  try {
+    const u = new URL(url);
+    return u.protocol === 'http:' || u.protocol === 'https:';
+  } catch {
+    return false;
   }
+}
+
+export async function GET(request: NextRequest, context: { params?: { slug?: string } }) {
+  console.log('[RedirectRouteV10-NoGeoIP] Entered GET handler.');
+
+  const resolvedParams = await Promise.resolve(context.params);
+  const slug = resolvedParams?.slug;
+  
+  if (!slug) {
+    console.error('[RedirectRouteV10-NoGeoIP] Slug was not resolved. Check routing and params.');
+    return NextResponse.redirect(new URL('/?error=slug_missing', request.url));
+  }
+
+  const originalHost = request.headers.get('x-original-host');
+  if (!originalHost) { 
+    console.error('[RedirectRouteV10-NoGeoIP] Missing x-original-host header for slug ' + slug + '.');
+    return NextResponse.redirect(new URL('/?error=original_host_missing', request.url));
+  }
+
+  console.log('[RedirectRouteV10-NoGeoIP] Processing slug ' + slug + ' for host ' + originalHost + '.');
 
   try {
     const link = await getLinkBySlugAndDomain(slug, originalHost);
+    console.log('[RedirectRouteV10-NoGeoIP] Link fetched for ' + slug + ': ', JSON.stringify(link, null, 2));
 
     if (link) {
-      const targetUrl = getTargetUrl(link);
+      const { targetUrl, nextIndexToSave } = determineTargetUrlAndIndex(link);
+      console.log('[RedirectRouteV10-NoGeoIP] Link ' + link.id + ': Determined targetUrl = ' + targetUrl + ', nextIndexToSave = ' + nextIndexToSave);
 
-      if (targetUrl) {
-        // Asynchronously increment click count - no need to await
-        incrementLinkClickCount(link.id).catch(console.error);
+      if (targetUrl && isValidHttpUrl(targetUrl)) {
+        incrementLinkClickCount(link.id).catch(err => {
+          console.error('[RedirectRouteV10-NoGeoIP] Error incrementing click count for link ' + link.id + ':', err);
+        });
 
+        if (typeof nextIndexToSave === 'number') {
+          console.log('[RedirectRouteV10-NoGeoIP] Attempting to update lastUsedTargetIndex for link ' + link.id + ' to ' + nextIndexToSave + '. Current value in fetched link object: ' + link.lastUsedTargetIndex);
+          updateLinkLastUsedTarget(link.id, nextIndexToSave).catch(err => {
+            console.error('[RedirectRouteV10-NoGeoIP] Error updating last used target index for link ' + link.id + ':', err);
+          });
+        }
+
+        const ipAddress = request.ip;
+        const userAgentString = request.headers.get('user-agent');
+        const referrer = request.headers.get('referer');
+        let deviceType: AnalyticEvent['deviceType'] = 'other';
+        if (userAgentString) {
+            if (/bot|crawl|slurp|spider|mediapartners/i.test(userAgentString)) deviceType = 'bot';
+            else if (/tablet|ipad|playbook|silk|(android(?!.*mobile))/i.test(userAgentString)) deviceType = 'tablet';
+            else if (/Mobile|iP(hone|od)|Android|BlackBerry|IEMobile|Kindle/i.test(userAgentString)) deviceType = 'mobile';
+            else deviceType = 'desktop';
+        }
+      
+        const eventToRecord: Omit<AnalyticEvent, 'id' | 'timestamp'> = {
+          linkId: link.id,
+          ipAddress: ipAddress || null,
+          userAgent: userAgentString || null,
+          referrer: referrer || null,
+          deviceType,
+        };
+      
+        recordAnalyticEvent(eventToRecord).catch(err =>
+         console.error('[RedirectRouteV10-NoGeoIP] Analytics record error for link ' + link.id + ':', err)
+        );
+      
         if (link.isCloaked) {
           try {
+            console.log('[RedirectRouteV10-NoGeoIP] Cloaking: Fetching ' + targetUrl + ' for slug ' + slug + '.');
             const response = await fetch(targetUrl);
             if (!response.ok) {
-                console.error(`Cloaking failed: Target URL ${targetUrl} returned ${response.status}`);
-                return NextResponse.redirect(new URL(targetUrl), 301); 
+                console.warn('[RedirectRouteV10-NoGeoIP] Cloak fetch failed with status ' + response.status + ' for ' + targetUrl);
+                return NextResponse.redirect(new URL(targetUrl), { status: 301 }); 
             }
             const body = await response.text();
             const headers = new Headers(response.headers);
             headers.delete('Content-Security-Policy');
             headers.delete('X-Frame-Options');
-
             return new NextResponse(body, {
-                status: response.status,
-                statusText: response.statusText,
-                headers: headers,
+              status: response.status,
+              statusText: response.statusText,
+              headers,
             });
           } catch (e) {
-            console.error(`Error during cloaking fetch for ${targetUrl}:`, e);
-            return NextResponse.redirect(new URL(targetUrl), 301);
+            console.error('[RedirectRouteV10-NoGeoIP] Cloaking fetch error for ' + targetUrl + ':', e);
+            return NextResponse.redirect(new URL(targetUrl), { status: 301 });
           }
         }
-        // Standard redirect
-        return NextResponse.redirect(new URL(targetUrl), 301); // 301 for permanent, 302/307 for temporary
+        console.log('[RedirectRouteV10-NoGeoIP] Redirecting to ' + targetUrl);
+        return NextResponse.redirect(new URL(targetUrl), { status: 301 });
+
+      } else { 
+        console.warn('[RedirectRouteV10-NoGeoIP] Invalid or missing target URL determined for slug ' + slug + '. Link data: ' + JSON.stringify(link));
+        return NextResponse.redirect(new URL('/?error=invalid_target_url_logic_issue', request.url)); 
       }
+    } else { 
+      console.warn('[RedirectRouteV10-NoGeoIP] No link found for slug ' + slug + ' on ' + originalHost + '.');
     }
   } catch (error) {
-    console.error(`Error processing redirect for slug '${slug}' on host '${originalHost}':`, error);
-    // Fallthrough to 404 if any error occurs or link/target is not found
+    console.error('[RedirectRouteV10-NoGeoIP] General redirect processing error for slug ' + slug + ':', error);
   }
 
-  // If link not found or no target URL, return a 404
-  // You can customize this to redirect to a specific 404 page or your homepage
-  const notFoundUrl = new URL('/404', request.url); // Or just request.url for site's 404
-  return NextResponse.rewrite(notFoundUrl); // Rewrite to keep the original URL in browser for 404
+  console.warn('[RedirectRouteV10-NoGeoIP] Fallback: Redirecting to homepage due to error or link not found for slug ' + (slug || "UNKNOWN_SLUG") + '.');
+  return NextResponse.redirect(new URL('/?error=link_processing_failed', request.url));
 }

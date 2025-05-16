@@ -12,6 +12,8 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@auth/mongodb-adapter": "^3.9.1",
+    "@auth/pg-adapter": "1.9.1",
     "@genkit-ai/googleai": "^1.8.0",
     "@genkit-ai/next": "^1.8.0",
     "@hookform/resolvers": "^4.1.3",
@@ -37,15 +39,20 @@
     "@radix-ui/react-tooltip": "^1.1.8",
     "@tanstack-query-firebase/react": "^1.0.5",
     "@tanstack/react-query": "^5.66.0",
+    "bcryptjs": "^2.4.3",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "date-fns": "^3.6.0",
     "dotenv": "^16.5.0",
     "firebase": "^11.7.0",
     "genkit": "^1.8.0",
+    "geoip-lite": "^1.4.10",
     "lucide-react": "^0.475.0",
+    "mongodb": "^6.0.0",
     "next": "15.2.3",
+    "next-auth": "^4.24.7",
     "patch-package": "^8.0.0",
+    "pg": "^8.12.0",
     "react": "^18.3.1",
     "react-day-picker": "^8.10.1",
     "react-dom": "^18.3.1",
@@ -53,23 +60,20 @@
     "recharts": "^2.15.1",
     "tailwind-merge": "^3.0.1",
     "tailwindcss-animate": "^1.0.7",
-    "zod": "^3.24.2",
-    "next-auth": "^4.24.7",
-    "bcryptjs": "^2.4.3",
-    "pg": "^8.12.0",
-    "mongodb": "^6.0.0",
-    "@auth/mongodb-adapter": "^3.9.1",
-    "@auth/pg-adapter": "1.9.1"
+    "ua-parser-js": "^2.0.3",
+    "zod": "^3.24.2"
   },
   "devDependencies": {
+    "@types/bcryptjs": "^2.4.6",
+    "@types/geoip-lite": "^1.4.4",
     "@types/node": "^20",
+    "@types/pg": "^8.10.9",
     "@types/react": "^18",
     "@types/react-dom": "^18",
+    "@types/ua-parser-js": "^0.7.39",
     "genkit-cli": "^1.8.0",
     "postcss": "^8",
     "tailwindcss": "^3.4.1",
-    "typescript": "^5",
-    "@types/bcryptjs": "^2.4.6",
-    "@types/pg": "^8.10.9"
+    "typescript": "^5"
   }
 }

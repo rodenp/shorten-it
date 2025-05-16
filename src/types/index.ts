@@ -43,6 +43,7 @@ export interface LinkItem {
   title?: string;
   groupId?: string; 
   groupName?: string; // Added for displaying group name directly
+  lastUsedTargetIndex?: number | null; // Added for round-robin URL rotation, can be null
 }
 
 export interface AnalyticEvent {

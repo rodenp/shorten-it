@@ -1,10 +1,23 @@
 
 import { pool, DB_TYPE } from './db';
-import { AnalyticEvent } from '@/types';
+import { AnalyticEvent, LinkItem } from '@/types'; // Added LinkItem for link check
 import { v4 as uuidv4 } from 'uuid';
 
 if (DB_TYPE !== 'postgres' || !pool) {
   console.warn('Analytics service currently only supports PostgreSQL. DB_TYPE is set to:', DB_TYPE);
+}
+
+// Helper function to check if link exists and belongs to user
+// This should ideally also return the link if found, to avoid a second DB call for clickCount
+// For now, it just validates. Consider enhancing it to return basic link details.
+async function validateLinkAccess(linkId: string, userId: string): Promise<boolean> {
+  if (!pool) throw new Error('PostgreSQL not configured');
+  const linkCheckQuery = 'SELECT id FROM links WHERE id = $1 AND "userId" = $2';
+  const linkCheck = await pool.query(linkCheckQuery, [linkId, userId]);
+  if (linkCheck.rows.length === 0) {
+    throw new Error('Link not found or user not authorized.');
+  }
+  return true;
 }
 
 function formatAnalyticEvent(row: any): AnalyticEvent {
@@ -46,47 +59,39 @@ export async function recordAnalyticEvent(eventData: Omit<AnalyticEvent, 'id' | 
   }
 }
 
-export async function getAnalyticsForLink(linkId: string, userId: string): Promise<AnalyticEvent[]> {
+// Fetches recent events - similar to getAnalyticsForLink but could be paginated/limited in future
+export async function getRecentAnalyticEvents(linkId: string, userId: string, limit: number = 20): Promise<AnalyticEvent[]> {
   if (DB_TYPE !== 'postgres' || !pool) throw new Error('PostgreSQL not configured');
+  await validateLinkAccess(linkId, userId); // Validate access first
   try {
-    const linkCheck = await pool.query('SELECT id FROM links WHERE id = $1 AND "userId" = $2', [linkId, userId]);
-    if (linkCheck.rows.length === 0) {
-      throw new Error('Link not found or user not authorized to view its analytics.');
-    }
-
     const res = await pool.query(
-      'SELECT * FROM analytic_events WHERE "linkId" = $1 ORDER BY timestamp DESC',
-      [linkId]
+      'SELECT * FROM analytic_events WHERE "linkId" = $1 ORDER BY timestamp DESC LIMIT $2',
+      [linkId, limit]
     );
     return res.rows.map(formatAnalyticEvent);
   } catch (err: any) {
-    console.error(`Error fetching analytics for link ${linkId}:`, err);
-    throw new Error(err.message || 'Failed to retrieve analytics for link.');
+    console.error(`Error fetching recent events for link ${linkId}:`, err);
+    throw new Error(err.message || 'Failed to retrieve recent events.');
   }
 }
 
 export async function getAnalyticsChartDataForLink(
   linkId: string,
   userId: string, 
-  daysInput: number = 7 // Renamed to daysInput to avoid conflict with internal days variable
+  daysInput: number = 30 
 ): Promise<{ date: string; clicks: number }[]> {
   if (DB_TYPE !== 'postgres' || !pool) throw new Error('PostgreSQL not configured');
-  
-  const linkCheck = await pool.query('SELECT id FROM links WHERE id = $1 AND "userId" = $2', [linkId, userId]);
-  if (linkCheck.rows.length === 0) {
-    throw new Error('Link not found or user not authorized to view its analytics.');
-  }
+  await validateLinkAccess(linkId, userId);
 
   let startDateFilter = '';
-  const queryParams = [linkId];
+  const queryParams: (string | number)[] = [linkId];
 
-  if (daysInput > 0) { // Only apply date filter if daysInput is positive
+  if (daysInput > 0) { 
     const startDate = new Date();
     startDate.setDate(startDate.getDate() - daysInput);
     startDateFilter = 'AND timestamp >= $2';
     queryParams.push(startDate.toISOString());
   }
-  // If daysInput is 0 or less, no date filter is applied (all-time data for the link)
 
   try {
     const query = `
@@ -108,7 +113,102 @@ export async function getAnalyticsChartDataForLink(
   }
 }
 
-// Updated to fetch totalLinks as well and handle days = 0 for all-time
+async function getTopItemsForLink(
+    linkId: string, 
+    columnName: string, 
+    limit: number = 5
+) : Promise<{ name: string; count: number }[]> {
+    if (DB_TYPE !== 'postgres' || !pool) throw new Error('PostgreSQL not configured');
+    const allowedColumns = ['browser', 'os', 'deviceType', 'referrer', 'country', 'city'];
+    if (!allowedColumns.includes(columnName)) {
+        throw new Error(`Invalid column name for aggregation: ${columnName}`);
+    }
+
+    try {
+        const query = `
+            SELECT "${columnName}" as name, COUNT(*) as count
+            FROM analytic_events
+            WHERE "linkId" = $1 AND "${columnName}" IS NOT NULL AND "${columnName}" != ''
+            GROUP BY "${columnName}"
+            ORDER BY count DESC
+            LIMIT $2;
+        `;
+        const res = await pool.query(query, [linkId, limit]);
+        return res.rows.map(row => ({
+            name: row.name,
+            count: parseInt(row.count, 10),
+        }));
+    } catch (err: any) {
+        console.error(`Error fetching top ${columnName} for link ${linkId}:`, err);
+        throw new Error(err.message || `Failed to retrieve top ${columnName}.`);
+    }
+}
+
+export async function getTopBrowsersForLink(linkId: string, userId: string, limit: number = 5) {
+    await validateLinkAccess(linkId, userId);
+    return getTopItemsForLink(linkId, 'browser', limit);
+}
+
+export async function getTopOSForLink(linkId: string, userId: string, limit: number = 5) {
+    await validateLinkAccess(linkId, userId);
+    return getTopItemsForLink(linkId, 'os', limit);
+}
+
+export async function getTopDeviceTypesForLink(linkId: string, userId: string, limit: number = 5) {
+    await validateLinkAccess(linkId, userId);
+    return getTopItemsForLink(linkId, 'deviceType', limit);
+}
+
+export async function getTopReferrersForLink(linkId: string, userId: string, limit: number = 5) {
+    await validateLinkAccess(linkId, userId);
+    return getTopItemsForLink(linkId, 'referrer', limit);
+}
+
+export async function getTopCountriesForLink(linkId: string, userId: string, limit: number = 5) {
+    await validateLinkAccess(linkId, userId);
+    return getTopItemsForLink(linkId, 'country', limit);
+}
+
+// New aggregated function
+export async function getAggregatedLinkAnalytics(
+  linkId: string, 
+  userId: string, 
+  days: number = 30, 
+  topN: number = 5
+) {
+  if (DB_TYPE !== 'postgres' || !pool) throw new Error('PostgreSQL not configured');
+  await validateLinkAccess(linkId, userId); // Single validation at the beginning
+
+  try {
+    const [chartData, recentEvents, topBrowsers, topOS, topDeviceTypes, topReferrers, topCountries] = await Promise.all([
+      getAnalyticsChartDataForLink(linkId, userId, days),
+      getRecentAnalyticEvents(linkId, userId, 20), // Fetch 20 recent events
+      getTopBrowsersForLink(linkId, userId, topN),
+      getTopOSForLink(linkId, userId, topN),
+      getTopDeviceTypesForLink(linkId, userId, topN),
+      getTopReferrersForLink(linkId, userId, topN),
+      getTopCountriesForLink(linkId, userId, topN),
+    ]);
+
+    return {
+      chartData,
+      recentEvents,
+      topBrowsers,
+      topOS,
+      topDeviceTypes,
+      topReferrers,
+      topCountries,
+      periodDays: days,
+    };
+  } catch (error) {
+    console.error(`Error in getAggregatedLinkAnalytics for link ${linkId}:`, error);
+    // Re-throw or handle as appropriate for your error strategy
+    // For instance, you might want to return null or a specific error object
+    throw error; // Re-throwing for now, API route can catch it
+  }
+}
+
+
 export async function getOverallAnalyticsSummary(userId: string, days: number = 7): Promise<any> {
     if (DB_TYPE !== 'postgres' || !pool) throw new Error('PostgreSQL not configured');
     
@@ -121,7 +221,6 @@ export async function getOverallAnalyticsSummary(userId: string, days: number = 
         dateFilterCondition = 'AND ae.timestamp >= $2';
         queryParamsClicks.push(startDate.toISOString());
     }
-    // If days is 0, dateFilterCondition remains empty, effectively fetching all-time clicks
 
     try {
         const totalClicksQuery = `
@@ -141,7 +240,7 @@ export async function getOverallAnalyticsSummary(userId: string, days: number = 
         return {
             totalClicks: parseInt(clicksRes.rows[0]?.totalClicks || '0', 10),
             totalLinks: parseInt(linksRes.rows[0]?.userTotalLinks || '0', 10),
-            periodDays: days, // Reflects the period requested (0 for all-time)
+            periodDays: days, 
         };
     } catch (err: any) {
         console.error(`Error fetching overall analytics summary for user ${userId}:`, err);

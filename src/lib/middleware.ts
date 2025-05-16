@@ -54,54 +54,59 @@ export async function middleware(request: NextRequest) {
           determinedHostForLog = 'Error/Unavailable';
       }
   }
-  // Log pathname at the start
-  console.log(`[MiddlewareV6 - ENTRY] Request for pathname: '${pathname}'. Determined host: ${hostname} (from ${determinedHostForLog})`);
+  console.log(`[MiddlewareV6] Determined hostname for x-original-host: ${hostname} (from ${determinedHostForLog}) for pathname: ${pathname}`);
 
   if (
     pathname.startsWith('/_next') ||
     pathname.startsWith('/static') || 
     ['/favicon.ico', '/manifest.json', '/robots.txt'].includes(pathname)
   ) {
-    console.log(`[MiddlewareV6-DEBUG] Path '${pathname}' is a static/framework asset. Calling NextResponse.next().`);
+    console.log(`[MiddlewareV6-DEBUG] Path ${pathname} is a static/framework asset. Calling NextResponse.next().`);
     return NextResponse.next();
   }
 
+  // Allow /api/internal/redirect/ to pass through without hitting the later API checks that might block it.
   if (pathname.startsWith('/api/internal/redirect/')) {
-    console.log(`[MiddlewareV6-DEBUG] Path '${pathname}' is internal redirect API. Calling NextResponse.next().`);
+    console.log(`[MiddlewareV6-DEBUG] Path ${pathname} is internal redirect API. Calling NextResponse.next().`);
     return NextResponse.next();
   }
 
-  if (pathname.startsWith('/api/')) { 
+  // General API routes (excluding auth and our internal redirect)
+  if (pathname.startsWith('/api/')) { // This condition now excludes /api/internal/redirect/
     if (pathname.startsWith('/api/auth/')) {
-        console.log(`[MiddlewareV6-DEBUG] Path '${pathname}' is an auth API. Passing to nextAuthMiddleware.`);
+        console.log(`[MiddlewareV6-DEBUG] Path ${pathname} is an auth API. Passing to nextAuthMiddleware.`);
         // @ts-ignore 
-        return nextAuthMiddleware(request); 
+        return nextAuthMiddleware(request); // Let nextAuthMiddleware handle /api/auth/* including its own NextResponse.next()
     } else {
-        console.log(`[MiddlewareV6-DEBUG] Path '${pathname}' is a non-auth, non-internal-redirect API. Calling NextResponse.next().`);
+        console.log(`[MiddlewareV6-DEBUG] Path ${pathname} is a non-auth, non-internal-redirect API. Calling NextResponse.next().`);
         return NextResponse.next(); 
     }
   }
   
-  // Crucial check point for any path that isn't static or an API path handled above
-  console.log(`[MiddlewareV6 - PRE-SLUG-CHECK] Pathname: '${pathname}'. Evaluating if it is a slug.`);
-
   const isAppRoute = protectedAppRoutesPrefixes.some(prefix => pathname.startsWith(prefix));
   const isAuthRoutePage = authRoutes.includes(pathname);
-  
-  console.log(`[MiddlewareV6 - PRE-SLUG-VARS] For pathname '${pathname}': isAppRoute=${isAppRoute}, isAuthRoutePage=${isAuthRoutePage}`);
 
-  // SLUG REWRITE BLOCK 
+  if (pathname === '/my-firebase-lnk') { 
+    console.log(`[MiddlewareV6-TARGET] Path IS /my-firebase-lnk. Evaluating slug rewrite conditions...`);
+    console.log(`[MiddlewareV6-TARGET] isAppRoute: ${isAppRoute}, !isAppRoute: ${!isAppRoute}`);
+    console.log(`[MiddlewareV6-TARGET] isAuthRoutePage: ${isAuthRoutePage}, !isAuthRoutePage: ${!isAuthRoutePage}`);
+  } 
+
+  // SLUG REWRITE BLOCK - For non-app, non-auth-page, non-root paths
   if (
     pathname && 
     pathname !== '/' && 
     !isAppRoute && 
     !isAuthRoutePage 
+    // No need for !pathname.startsWith('/api/auth/') here as /api/ paths are handled above
   ) {
-    console.log(`[MiddlewareV6-DEBUG] Pathname '${pathname}' ENTERED SLUG REWRITE Block's main IF condition.`);
+    if (pathname === '/my-firebase-lnk') { // Specific log for your test case
+        console.log(`[MiddlewareV6-TARGET] Path /my-firebase-lnk ENTERED SLUG REWRITE Block.`);
+    }
     const slug = decodeURIComponent(pathname.substring(1));
 
     if (slug) {
-      console.log(`[MiddlewareV6-DEBUG] Slug detected: '${slug}' for pathname '${pathname}'. Preparing to rewrite.`);
+      console.log(`[MiddlewareV6-DEBUG] Slug detected: '${slug}'. Preparing to rewrite.`);
       const rewriteUrl = new URL(`/api/internal/redirect/${slug}${search}`, originalRequestUrl);
       
       const newHeaders = new Headers(request.headers);
@@ -115,13 +120,15 @@ export async function middleware(request: NextRequest) {
       console.log(`[MiddlewareV6-ACTION] REWRITING slug '${slug}' for pathname '${pathname}' to: ${rewriteUrl.toString()}`);
       return NextResponse.rewrite(rewriteUrl, { request: { headers: newHeaders } });
     } else {
-      console.warn(`[MiddlewareV6-DEBUG] Pathname '${pathname}' entered slug block, but extracted slug was empty. Passing to nextAuthMiddleware.`);
+      // This case means pathname passed the main conditions, but slug ended up empty (e.g. path was just "/" after substring, though initial check prevents root)
+      console.warn(`[MiddlewareV6-DEBUG] Pathname '${pathname}' passed slug conditions but extracted slug was empty. Passing to nextAuthMiddleware.`);
       // @ts-ignore 
       return nextAuthMiddleware(request);
     }
   } 
   
-  console.log(`[MiddlewareV6-DEBUG] Pathname '${pathname}' did NOT enter SLUG REWRITE Block's main IF. Passing to nextAuthMiddleware for default auth protection/handling.`);
+  // If it didn't match any of the above special handling (static, API, slug rewrite), it's likely an app page or auth page.
+  console.log(`[MiddlewareV6-DEBUG] Pathname '${pathname}' did not match slug rewrite conditions or other specific handlers. Passing to nextAuthMiddleware for default auth protection/handling.`);
   // @ts-ignore 
   return nextAuthMiddleware(request);
 }
