@@ -1,27 +1,35 @@
 
 import { DB_TYPE, pool, clientPromise } from '@/lib/db';
 import { Collection, Db, ObjectId } from 'mongodb';
-import crypto from 'crypto'; // For generating secure random bytes
-import bcrypt from 'bcryptjs'; // For hashing the API key
+// REMOVED: import bcrypt from 'bcryptjs';
+
+// Helper function to generate SHA-256 hash for API keys (Edge-compatible)
+async function generateSha256Hash(key: string): Promise<string> {
+  const encoder = new TextEncoder();
+  const data = encoder.encode(key);
+  // 'crypto.subtle' is globally available in Edge and modern Node.js (>=15)
+  const hashBuffer = await crypto.subtle.digest('SHA-256', data);
+  const hashArray = Array.from(new Uint8Array(hashBuffer));
+  const hashHex = hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+  return hashHex;
+}
 
 export interface ApiKey {
-  id: string; // Corresponds to _id in MongoDB or id in PostgreSQL
-  _id?: ObjectId; // MongoDB specific ID
+  id: string; 
+  _id?: ObjectId; 
   userId: string;
   name: string;
-  prefix: string; // First few characters of the key for display
-  hashedKey: string; // The hash of the actual key
+  prefix: string; 
+  hashedKey: string; // Now stores SHA-256 hash of the key
   permissions: string[];
   createdAt: Date;
   lastUsedAt?: Date | null;
 }
 
-// This interface includes the raw key, only for the response when a key is first created.
 export interface NewApiKeyResponse extends Omit<ApiKey, 'hashedKey' | '_id'> {
-  key: string; // The raw, unhashed API key
+  key: string; 
 }
 
-// For MongoDB (assuming an 'api_keys' collection)
 let apiKeysCollection: Collection<Omit<ApiKey, 'id'> & { _id: ObjectId }> | null = null;
 
 async function getMongoApiKeysCollection(): Promise<Collection<Omit<ApiKey, 'id'> & { _id: ObjectId }>> {
@@ -42,7 +50,7 @@ async function getMongoApiKeysCollection(): Promise<Collection<Omit<ApiKey, 'id'
 
 function mapMongoDocToApiKey(doc: (Omit<ApiKey, 'id'> & { _id: ObjectId }) | null): Omit<ApiKey, 'hashedKey' | '_id'> | null {
   if (!doc) return null;
-  const { _id, hashedKey, ...rest } = doc; // Exclude hashedKey from default mapping
+  const { _id, hashedKey, ...rest } = doc; 
   return { id: _id.toHexString(), ...rest };
 }
 
@@ -52,9 +60,10 @@ function mapMongoDocToApiKeyWithHash(doc: (Omit<ApiKey, 'id'> & { _id: ObjectId 
   return { id: _id.toHexString(), ...rest };
 }
 
-
 const generateApiKey = (length = 32) => {
-  return crypto.randomBytes(length).toString('hex');
+  const buffer = new Uint8Array(length);
+  crypto.getRandomValues(buffer); 
+  return Array.from(buffer, byte => byte.toString(16).padStart(2, '0')).join('');
 };
 
 export const ApiKeyModel = {
@@ -76,8 +85,8 @@ export const ApiKeyModel = {
 
   async create(userId: string, name: string, permissions: string[]): Promise<NewApiKeyResponse> {
     const rawKey = `sk_${generateApiKey()}`;
-    const prefix = rawKey.substring(0, 7); // e.g., "sk_abc123"
-    const hashedKey = await bcrypt.hash(rawKey, 10);
+    const prefix = rawKey.substring(0, 7); 
+    const hashedKey = await generateSha256Hash(rawKey); // Use SHA-256 hashing
     const now = new Date();
 
     if (DB_TYPE === 'mongodb') {
@@ -90,12 +99,11 @@ export const ApiKeyModel = {
         permissions,
         createdAt: now,
         lastUsedAt: null,
-      } as Omit<ApiKey, 'id' | '_id'> & { _id?: ObjectId }); // Cast for MongoDB driver
+      } as Omit<ApiKey, 'id' | '_id'> & { _id?: ObjectId }); 
       
-      // Important: Return the raw key HERE, it won't be stored like this.
       return {
         id: result.insertedId.toHexString(),
-        key: rawKey, // The raw key
+        key: rawKey, 
         userId,
         name,
         prefix,
@@ -105,15 +113,14 @@ export const ApiKeyModel = {
       };
     } else if (DB_TYPE === 'postgres') {
       if (!pool) throw new Error('PostgreSQL pool not initialized.');
-      const newId = new ObjectId().toHexString(); // Generate a unique ID for the DB record
+      const newId = new ObjectId().toHexString(); 
       await pool.query(
         'INSERT INTO api_keys (id, "userId", name, prefix, "hashedKey", permissions, "createdAt", "lastUsedAt") VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING id',
         [newId, userId, name, prefix, hashedKey, permissions, now, null]
       );
-      // Important: Return the raw key HERE
       return {
         id: newId,
-        key: rawKey, // The raw key
+        key: rawKey, 
         userId,
         name,
         prefix,
@@ -126,7 +133,6 @@ export const ApiKeyModel = {
   },
 
   async delete(id: string, userId: string): Promise<{ success: boolean; message?: string }> {
-    // Ensure the key belongs to the user trying to delete it
     if (DB_TYPE === 'mongodb') {
       if (!ObjectId.isValid(id)) return { success: false, message: 'Invalid ID format' };
       const collection = await getMongoApiKeysCollection();
@@ -140,30 +146,18 @@ export const ApiKeyModel = {
     throw new Error('Unsupported DB_TYPE');
   },
 
-  // This function would be used by an authentication strategy, not directly by the settings UI
   async findByKey(key: string): Promise<ApiKey | null> {
-    const prefix = key.substring(0, 7);
-    // This is a simplified lookup. In a real scenario with many keys, 
-    // you might not want to fetch all keys with the same prefix.
-    // However, for API key validation, you'd iterate and bcrypt.compare.
+    const hashedKeyToCompare = await generateSha256Hash(key);
+
     if (DB_TYPE === 'mongodb') {
         const collection = await getMongoApiKeysCollection();
-        // Fetch potential candidates by prefix. This is an optimization to reduce bcrypt operations.
-        const candidates = await collection.find({ prefix }).toArray();
-        for (const candidateDoc of candidates) {
-            const isValid = await bcrypt.compare(key, candidateDoc.hashedKey);
-            if (isValid) return mapMongoDocToApiKeyWithHash(candidateDoc);
-        }
-        return null;
+        const candidateDoc = await collection.findOne({ hashedKey: hashedKeyToCompare });
+        if (candidateDoc) return mapMongoDocToApiKeyWithHash(candidateDoc);
     } else if (DB_TYPE === 'postgres') {
         if (!pool) throw new Error('PostgreSQL pool not initialized.');
-        const res = await pool.query('SELECT * FROM api_keys WHERE prefix = $1', [prefix]);
-        for (const row of res.rows) {
-            const isValid = await bcrypt.compare(key, row.hashedKey);
-            if (isValid) return row;
-        }
-        return null;
+        const res = await pool.query('SELECT * FROM api_keys WHERE "hashedKey" = $1', [hashedKeyToCompare]);
+        if (res.rows.length > 0) return res.rows[0] as ApiKey; // Ensure correct typing
     }
-    throw new Error('Unsupported DB_TYPE');
+    return null;
   }
 };
