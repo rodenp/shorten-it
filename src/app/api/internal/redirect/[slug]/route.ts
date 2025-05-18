@@ -8,6 +8,33 @@ import {
 import { recordAnalyticEvent } from '@/lib/analyticsService';
 import type { LinkItem, AnalyticEvent } from '@/types';
 import { debugLog, debugWarn } from '@/lib/logging';
+import { getGeoData } from '@/lib/geoService';
+import countries from 'i18n-iso-countries';
+import enLocale from 'i18n-iso-countries/langs/en.json';
+import { UAParser } from 'ua-parser-js'; // ✅
+
+countries.registerLocale(enLocale); // register English names
+export function getClientIp(request: NextRequest): string {
+  const forwarded = request.headers.get('x-forwarded-for') ?? '';
+  const rawIp = forwarded.split(',')[0].trim();
+
+  return isLocalIp(rawIp)
+    ? process.env.FALLBACK_IP || '8.8.8.8'
+    : rawIp;
+}
+function isLocalIp(ip: string): boolean {
+  return (
+    ip === '::1' ||
+    ip === '127.0.0.1' ||
+    ip === '::ffff:127.0.0.1' || // <== handle this case
+    ip.startsWith('192.168.') ||
+    ip.startsWith('10.') ||
+    ip.startsWith('172.') ||
+    ip.startsWith('::ffff:192.168.') ||  // optional IPv6-mapped local
+    ip.startsWith('::ffff:10.') ||       // optional IPv6-mapped local
+    ip.startsWith('::ffff:172.')         // optional IPv6-mapped local
+  );
+}
 
 // Determine target URL with rotation logic
 function determineTargetUrlAndIndex(link: LinkItem): { targetUrl: string | null; nextIndexToSave?: number } {
@@ -85,7 +112,16 @@ export async function GET(request: NextRequest, context: { params?: { slug?: str
           });
         }
 
-        const ipAddress = request.ip;
+        const acceptLanguage = request.headers.get('accept-language') || 'en';
+        const ua = request.headers.get("user-agent") || '';
+        const parser = new UAParser(ua);
+        const browser = parser.getBrowser().name || 'Unknown';
+        const os = parser.getOS().name || 'Unknown';
+        //const ipAddress = request.ip;
+        const ipAddress = getClientIp(request);
+        debugLog('[RedirectRouteV10-NoGeoIP] IP Address: ' + ipAddress);
+        const geo = await getGeoData(ipAddress, acceptLanguage);
+        debugLog("[RedirectRouteV10-NoGeoIP] Geo:", geo);
         const userAgentString = request.headers.get('user-agent');
         const referrer = request.headers.get('referer');
         let deviceType: AnalyticEvent['deviceType'] = 'other';
@@ -102,6 +138,10 @@ export async function GET(request: NextRequest, context: { params?: { slug?: str
           userAgent: userAgentString || null,
           referrer: referrer || null,
           deviceType,
+          country: geo?.country,
+          city: geo?.city,
+          browser,
+          os,
         };
       
         recordAnalyticEvent(eventToRecord).catch(err =>

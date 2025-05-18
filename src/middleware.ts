@@ -2,7 +2,7 @@
 import { NextResponse, type NextRequest } from 'next/server';
 import { DEFAULT_LOGIN_REDIRECT, authRoutes, publicRoutes, protectedAppRoutesPrefixes } from "@/lib/auth-routes";
 import { withAuth } from 'next-auth/middleware';
-import { debugLog, debugWarn } from "./lib/logging";
+import { debugLog, debugWarn } from '@/lib/logging';
 // REMOVED direct import of ApiKeyModel for Edge compatibility in middleware
 // import { ApiKeyModel, type ApiKey } from '@/models/ApiKey'; 
 

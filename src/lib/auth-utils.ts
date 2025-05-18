@@ -1,7 +1,7 @@
 
 import { getServerSession } from "next-auth/next";
 import { authOptions } from "@/lib/auth"; 
-import { debugLog, debugWarn } from "./logging";
+import { debugLog, debugWarn } from '@/lib/logging';
 
 export async function getUserIdFromRequest(request: Request): Promise<string | null> {
   // Check for API key-derived user ID first
