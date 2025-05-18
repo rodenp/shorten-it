@@ -1,12 +1,13 @@
 
 import { NextResponse } from 'next/server';
+import { debugLog, debugWarn } from '@/lib/logging';
 
 export async function POST(request: Request) {
   try {
     // You could optionally try to parse the request body if you send one
     // const body = await request.json();
-    // console.log("Test POST request body:", body);
-    console.log("Test POST API route hit successfully.");
+    // debugLog("Test POST request body:", body);
+    debugLog("Test POST API route hit successfully.");
     return NextResponse.json({ message: "Test POST successful!", timestamp: new Date().toISOString() });
   } catch (error: any) {
     console.error("Error in test POST API route:", error);

@@ -5,6 +5,7 @@ import {
   getLinksByUserId,
 } from '@/lib/linkService';
 import { getUserIdFromRequest } from '@/lib/auth-utils';
+import { debugLog, debugWarn } from '@/lib/logging';
 import { LinkItem } from '@/types';
 
 // GET /api/links (Get all links for the logged-in user)
@@ -33,12 +34,12 @@ export async function POST(request: Request) {
     const linkData = await request.json(); // Expects data conforming to CreateLinkData
 
     // Log the received originalUrl and its length for debugging
-    console.log("Received originalUrl in API route:", linkData.originalUrl);
-    console.log("Length of received originalUrl:", linkData.originalUrl?.length);
+    debugLog("Received originalUrl in API route:", linkData.originalUrl);
+    debugLog("Length of received originalUrl:", linkData.originalUrl?.length);
     // Also log the first target URL as an example, if targets exist
     if (linkData.targets && linkData.targets.length > 0) {
-        console.log("First target URL in API route:", linkData.targets[0]?.url);
-        console.log("Length of first target URL:", linkData.targets[0]?.url?.length);
+        debugLog("First target URL in API route:", linkData.targets[0]?.url);
+        debugLog("Length of first target URL:", linkData.targets[0]?.url?.length);
     }
 
 

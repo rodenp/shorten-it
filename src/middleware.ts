@@ -2,22 +2,9 @@
 import { NextResponse, type NextRequest } from 'next/server';
 import { DEFAULT_LOGIN_REDIRECT, authRoutes, publicRoutes, protectedAppRoutesPrefixes } from "@/lib/auth-routes";
 import { withAuth } from 'next-auth/middleware';
+import { debugLog, debugWarn } from "./lib/logging";
 // REMOVED direct import of ApiKeyModel for Edge compatibility in middleware
 // import { ApiKeyModel, type ApiKey } from '@/models/ApiKey'; 
-
-const IS_DEBUG_LOGGING_ENABLED = process.env.DEBUG_LOGGING === 'true';
-
-function debugLog(...args: any[]) {
-  if (IS_DEBUG_LOGGING_ENABLED) {
-    console.log(...args);
-  }
-}
-
-function debugWarn(...args: any[]) {
-  if (IS_DEBUG_LOGGING_ENABLED) {
-    console.warn(...args);
-  }
-}
 
 function hasApiPermission(apiKeyPermissions: string[], requiredPermission: string): boolean {
   if (!requiredPermission) return true; 

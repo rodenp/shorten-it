@@ -5,6 +5,7 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import { useForm } from 'react-hook-form';
 import * as z from 'zod';
 import { Button } from '@/components/ui/button';
+import { debugLog, debugWarn } from '@/lib/logging';
 import {
   Form,
   FormControl,
@@ -245,7 +246,7 @@ export function UrlInputForm({ onLinkAdded }: UrlInputFormProps) {
     payload.targets = linkTargets;
 
     // Log the payload just before sending
-    console.log("Payload being sent to /api/links:", JSON.stringify(payload, null, 2));
+    debugLog("Payload being sent to /api/links:", JSON.stringify(payload, null, 2));
 
     try {
       const response = await fetch('/api/links', {

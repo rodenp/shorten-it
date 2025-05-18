@@ -3,20 +3,7 @@ import { pool, DB_TYPE } from './db'; // Ensure DB_TYPE is imported
 import { LinkItem, LinkTarget, RetargetingPixel } from '@/types';
 import { v4 as uuidv4 } from 'uuid';
 import { getShortenerDomain } from './mock-data'; 
-
-const IS_DEBUG_LOGGING_ENABLED = process.env.DEBUG_LOGGING === 'true';
-
-function debugLog(...args: any[]) {
-  if (IS_DEBUG_LOGGING_ENABLED) {
-    console.log(...args);
-  }
-}
-
-function debugWarn(...args: any[]) {
-  if (IS_DEBUG_LOGGING_ENABLED) {
-    console.warn(...args);
-  }
-}
+import { debugLog, debugWarn } from '@/lib/logging';
 
 // Add a top-level log to see initial values when linkService.ts is imported/run
 debugLog(`[linkService - Global] Initial DB_TYPE: ${DB_TYPE}, pool object initialized: ${!!pool}`);

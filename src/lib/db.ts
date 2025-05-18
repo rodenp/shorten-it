@@ -1,6 +1,7 @@
 
 import { MongoClient, ServerApiVersion } from 'mongodb';
 import { Pool } from 'pg';
+import { debugLog } from '@/lib/logging';
 
 const MONGODB_URI = process.env.MONGODB_URI;
 const POSTGRES_URI = process.env.POSTGRES_URI;
@@ -196,7 +197,7 @@ async function createPostgresTables() {
     await dbClient.query('CREATE INDEX IF NOT EXISTS "analytic_event_country_idx" ON analytic_events(country);' );
     await dbClient.query('CREATE INDEX IF NOT EXISTS "analytic_event_deviceType_idx" ON analytic_events("deviceType");' );
 
-    console.log('PostgreSQL tables checked/created successfully.');
+    debugLog('PostgreSQL tables checked/created successfully.');
   } catch (err) {
     console.error('Error creating/checking PostgreSQL tables:', err);
     throw err;

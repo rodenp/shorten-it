@@ -1,20 +1,7 @@
 
 import { getServerSession } from "next-auth/next";
 import { authOptions } from "@/lib/auth"; 
-
-const IS_DEBUG_LOGGING_ENABLED = process.env.DEBUG_LOGGING === 'true';
-
-function debugLog(...args: any[]) {
-  if (IS_DEBUG_LOGGING_ENABLED) {
-    console.log(...args);
-  }
-}
-
-function debugWarn(...args: any[]) {
-  if (IS_DEBUG_LOGGING_ENABLED) {
-    console.warn(...args);
-  }
-}
+import { debugLog, debugWarn } from "./logging";
 
 export async function getUserIdFromRequest(request: Request): Promise<string | null> {
   // Check for API key-derived user ID first

@@ -8,6 +8,7 @@ import bcrypt from 'bcryptjs';
 import { DB_TYPE, clientPromise, pool } from './db';
 import { MongoDBAdapter } from "@auth/mongodb-adapter";
 import PgAdapter from "@auth/pg-adapter";
+import { debugLog, debugWarn } from '@/lib/logging';
 
 let adapter: Adapter;
 
@@ -27,7 +28,7 @@ if (DB_TYPE === 'mongodb') {
         VerificationTokens: "verification_tokens",
       }
     });
-    console.log("Using MongoDBAdapter (@auth/mongodb-adapter) for NextAuth.");
+    debugLog("Using MongoDBAdapter (@auth/mongodb-adapter) for NextAuth.");
   } catch (e: any) {
     console.error("Failed to load MongoDBAdapter. If using MongoDB, ensure '@auth/mongodb-adapter' is installed.", e);
     if (e.code === 'MODULE_NOT_FOUND') {
@@ -43,7 +44,7 @@ if (DB_TYPE === 'mongodb') {
   }
   try {
     adapter = PgAdapter(pool);
-    console.log("Using PgAdapter (@auth/pg-adapter) for NextAuth.");
+    debugLog("Using PgAdapter (@auth/pg-adapter) for NextAuth.");
   } catch (e: any) {
     console.error("Failed to load PgAdapter. If using PostgreSQL, ensure '@auth/pg-adapter' is installed.", e);
      if (e.code === 'MODULE_NOT_FOUND') {
@@ -68,30 +69,30 @@ export const authOptions: NextAuthOptions = {
       },
       async authorize(credentials) {
         if (!credentials?.email || !credentials?.password) {
-          console.log('Auth: Missing credentials');
+          debugLog('Auth: Missing credentials');
           return null;
         }
 
         const user = await UserModel.findByEmail(credentials.email as string);
 
         if (!user) {
-          console.log(`Auth: No user found for email ${credentials.email}`);
+          debugLog(`Auth: No user found for email ${credentials.email}`);
           return null;
         }
 
         if (!user.password) {
-            console.log(`Auth: User ${credentials.email} has no password set (e.g. OAuth user).`);
+            debugLog(`Auth: User ${credentials.email} has no password set (e.g. OAuth user).`);
             return null;
         }
 
         const isPasswordValid = await bcrypt.compare(credentials.password as string, user.password);
 
         if (!isPasswordValid) {
-          console.log(`Auth: Invalid password for user ${credentials.email}`);
+          debugLog(`Auth: Invalid password for user ${credentials.email}`);
           return null;
         }
 
-        console.log(`Auth: User ${credentials.email} authenticated successfully.`);
+        debugLog(`Auth: User ${credentials.email} authenticated successfully.`);
         let userId = user.id;
         if (DB_TYPE === 'mongodb' && user._id && !user.id) {
             userId = user._id.toHexString();
