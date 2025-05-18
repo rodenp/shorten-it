@@ -77,6 +77,21 @@ async function createPostgresTables() {
     );
     await dbClient.query('CREATE UNIQUE INDEX IF NOT EXISTS "userId_domainName_idx" ON custom_domains("userId", "domainName");');
 
+    await dbClient.query(` 
+      CREATE TABLE IF NOT EXISTS campaign_templates (
+        id TEXT PRIMARY KEY ,
+        "userId" TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        name TEXT NOT NULL,
+        source TEXT,
+        medium TEXT,
+        campaign TEXT,
+        term TEXT,
+        content TEXT,
+        "createdAt" TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        "updatedAt" TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      );`
+    );
+
     await dbClient.query( 
       'CREATE TABLE IF NOT EXISTS api_keys ( ' +
       '  id TEXT PRIMARY KEY, ' +

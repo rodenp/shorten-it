@@ -85,7 +85,7 @@ export function ApiKeysSettings() {
     }
     setIsGenerating(true);
     // For now, let's use a default set of permissions
-    const defaultPermissions = ['links:read', 'links:write', 'domains:read', 'analytics:read'];
+    const defaultPermissions = ['links:read', 'links:write', 'domains:read', 'campaigns:read', 'analytics:read'];
     try {
       const response = await fetch('/api/api-keys', {
         method: 'POST',

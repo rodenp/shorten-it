@@ -120,6 +120,9 @@ export async function middleware(request: NextRequest) {
             } else if (pathname.startsWith('/api/custom-domains')) {
                 if (request.method === 'POST' || request.method === 'PUT' || request.method === 'DELETE') requiredPermission = 'domains:write';
                 else if (request.method === 'GET') requiredPermission = 'domains:read';
+            } else if (pathname.startsWith('/api/campaign-templates')) {
+                if (request.method === 'POST' || request.method === 'PUT' || request.method === 'DELETE') requiredPermission = 'campaigns:write';
+                else if (request.method === 'GET') requiredPermission = 'campaigns:read';
             } else if (pathname.startsWith('/api/retargeting-pixels')) {
                 if (request.method === 'POST' || request.method === 'PUT' || request.method === 'DELETE') requiredPermission = 'pixels:write';
                 else if (request.method === 'GET') requiredPermission = 'pixels:read';

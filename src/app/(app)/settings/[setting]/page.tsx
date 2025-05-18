@@ -6,6 +6,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Button } from '@/components/ui/button';
 import Link from 'next/link';
 import { ArrowLeft, Settings, Info } from 'lucide-react';
+import { CampaignTemplatesSettings } from '@/components/settings/campaign-templates-settings';
 import { CustomDomainsSettings } from '@/components/settings/custom-domains-settings';
 import { ProfileSettings } from '@/components/settings/profile-settings'; 
 import { AppearanceSettings } from '@/components/settings/appearance-settings';
@@ -27,6 +28,8 @@ export default function SpecificSettingPage() {
 
   const renderSettingComponent = () => {
     switch (settingName) {
+      case 'campaigns':
+        return <CampaignTemplatesSettings />;
       case 'domains':
         return <CustomDomainsSettings />;
       case 'profile':
