@@ -1,6 +1,6 @@
 
 import { pool, DB_TYPE } from './db';
-import { TeamMember, UserProfile } from '@/types';
+import { TeamMember, UserProfile, User } from '@/types';
 import { v4 as uuidv4 } from 'uuid';
 
 if (DB_TYPE !== 'postgres' || !pool) {
@@ -94,6 +94,33 @@ async function getUserByEmail(email: string): Promise<UserProfile | null> {
   }
 }
 
+// Function to create a new basic user profile (for invited users)
+async function createBasicUser(email: string): Promise<UserProfile> {
+  if (DB_TYPE !== 'postgres' || !pool) throw new Error('PostgreSQL not configured');
+  try {
+    const userId = uuidv4();
+    const createdAt = new Date().toISOString();
+    const query = `
+      INSERT INTO users (id, email, "createdAt", "updatedAt", "emailVerified", name)
+      VALUES ($1, $2, $3, $3, NULL, $4)
+      RETURNING id, email, name, image;
+    `;
+    // For invited users, we might not have a name initially, or we can use the email
+    const userName = email.split('@')[0]; // Basic name from email, can be updated later
+    const res = await pool.query(query, [userId, email, createdAt, userName]);
+    const userRow = res.rows[0];
+    return {
+        id: userRow.id,
+        fullName: userRow.name,
+        email: userRow.email,
+        avatarUrl: userRow.image // Will likely be null initially
+    };
+  } catch (err) {
+    console.error('Error creating basic user:', err);
+    throw new Error('Failed to create basic user profile.');
+  }
+}
+
 export async function addTeamMember(
   teamOwnerId: string,
   memberEmail: string,
@@ -102,32 +129,41 @@ export async function addTeamMember(
   if (DB_TYPE !== 'postgres' || !pool) throw new Error('PostgreSQL not configured');
   
   const memberUser = await getUserByEmail(memberEmail);
-  if (!memberUser) {
-    return { error: 'User with this email does not exist.' };
+  let userToAddId: string;
+  let userToAddProfile: UserProfile;
+
+  if (memberUser) {
+    // User already exists, use their existing ID
+    userToAddId = memberUser.id;
+    userToAddProfile = memberUser;
+  } else {
+    // User does not exist, create a basic profile for them
+    userToAddProfile = await createBasicUser(memberEmail);
+    userToAddId = userToAddProfile.id;
   }
 
-  if (memberUser.id === teamOwnerId) {
+  if (userToAddId === teamOwnerId) {
     return { error: 'You cannot add yourself to your own team.' };
   }
 
   const membershipId = uuidv4();
   const createdAt = new Date().toISOString();
-
+  
   try {
     const query = `
       INSERT INTO team_memberships (id, "teamOwnerId", "memberUserId", role, "createdAt", "updatedAt")
       VALUES ($1, $2, $3, $4, $5, $5)
       RETURNING id AS "membershipId", "teamOwnerId", "memberUserId", role, "createdAt" AS "membershipCreatedAt", "updatedAt" AS "membershipUpdatedAt";
     `;
-    const res = await pool.query(query, [membershipId, teamOwnerId, memberUser.id, role, createdAt]);
-    
+    const res = await pool.query(query, [membershipId, teamOwnerId, userToAddId, role, createdAt]);
+
     const newMembership = res.rows[0];
     return {
-      id: memberUser.id,
+      id: userToAddProfile.id,
       teamMembershipId: newMembership.membershipId,
-      fullName: memberUser.fullName,
-      email: memberUser.email,
-      avatarUrl: memberUser.avatarUrl,
+ fullName: userToAddProfile.fullName,
+ email: userToAddProfile.email,
+      avatarUrl: userToAddProfile.avatarUrl, // Will likely be null initially for new users
       role: newMembership.role as TeamMember['role'],
       membershipCreatedAt: new Date(newMembership.membershipCreatedAt).toISOString(),
       membershipUpdatedAt: new Date(newMembership.membershipUpdatedAt).toISOString(),
