@@ -7,7 +7,8 @@ import { Button } from '@/components/ui/button';
 import Link from 'next/link';
 import { ArrowLeft, Settings, Info } from 'lucide-react';
 import { CampaignTemplatesSettings } from '@/components/settings/campaign-templates-settings';
-import { CustomDomainsSettings } from '@/components/settings/custom-domains-settings';
+import { AddDomainSettings } from '@/components/settings/add-domain-settings';
+import { AllDomainsSettings } from '@/components/settings/all-domains-settings';
 import { ProfileSettings } from '@/components/settings/profile-settings'; 
 import { AppearanceSettings } from '@/components/settings/appearance-settings';
 import { ApiKeysSettings } from '@/components/settings/api-keys-settings';
@@ -30,8 +31,10 @@ export default function SpecificSettingPage() {
     switch (settingName) {
       case 'campaigns':
         return <CampaignTemplatesSettings />;
+      case 'new-domain':
+        return <AddDomainSettings />;
       case 'domains':
-        return <CustomDomainsSettings />;
+        return <AllDomainsSettings />;
       case 'profile':
         return <ProfileSettings />; 
       case 'appearance':

@@ -54,7 +54,8 @@ export default function AppSidebar({ inSheet = false }: AppSidebarProps) {
   const settingsNavItems = [
     { href: '/settings/profile', label: 'Profile', icon: UserCircle },
     { href: '/settings/campaigns', label: 'Campaign Templates', icon: Globe },
-    { href: '/settings/domains', label: 'Custom Domains', icon: Globe }, 
+    { href: '/settings/domains', label: 'All Domains', icon: Globe }, 
+    { href: '/settings/new-domain', label: 'Add New Domain', icon: Globe }, 
     { href: '/settings/team', label: 'Team Collaboration', icon: Users },
     { href: '/settings/retargeting', label: 'Retargeting Pixels', icon: Target },
     { href: '/settings/apikeys', label: 'API Keys', icon: KeyRound },
