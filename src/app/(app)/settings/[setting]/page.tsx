@@ -8,6 +8,7 @@ import Link from 'next/link';
 import { ArrowLeft, Settings, Info } from 'lucide-react';
 import { CampaignTemplatesSettings } from '@/components/settings/campaign-templates-settings';
 import { AddDomainSettings } from '@/components/settings/add-domain-settings';
+import { SubscriptionSettings } from '@/components/settings/subscription-settings';
 import { AllDomainsSettings } from '@/components/settings/all-domains-settings';
 import { ProfileSettings } from '@/components/settings/profile-settings'; 
 import { AppearanceSettings } from '@/components/settings/appearance-settings';
@@ -31,6 +32,8 @@ export default function SpecificSettingPage() {
     switch (settingName) {
       case 'campaigns':
         return <CampaignTemplatesSettings />;
+      case 'subscription':
+        return <SubscriptionSettings />;
       case 'new-domain':
         return <AddDomainSettings />;
       case 'domains':

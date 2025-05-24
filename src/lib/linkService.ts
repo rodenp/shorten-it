@@ -4,6 +4,7 @@ import { LinkItem, LinkTarget, RetargetingPixel } from '@/types';
 import { v4 as uuidv4 } from 'uuid';
 import { getShortenerDomain } from './mock-data'; 
 import { debugLog, debugWarn } from '@/lib/logging';
+import { debug } from 'console';
 
 // Add a top-level log to see initial values when linkService.ts is imported/run
 debugLog(`[linkService - Global] Initial DB_TYPE: ${DB_TYPE}, pool object initialized: ${!!pool}`);
@@ -57,16 +58,20 @@ function formatLinkItem(row: any, pixels?: RetargetingPixel[]): LinkItem {
     tags: row.tags || [],
     isCloaked: row.isCloaked,
     customDomain: row.customDomainName, 
-    customDomainId: row.customDomainId, 
+    domainId: row.domainId, 
     groupId: row.groupId,
     groupName: row.groupName, 
     deepLinkConfig: row.deepLinkConfig,
     abTestConfig: row.abTestConfig,
     targets: row.targets,
+    folderId: row.folderId || null,
     retargetingPixels: pixels,
     createdAt: new Date(row.createdAt).toISOString(),
     updatedAt: row.updatedAt ? new Date(row.updatedAt).toISOString() : undefined,
     lastUsedTargetIndex: typeof lastUsedTargetIndexFromDb === 'number' ? lastUsedTargetIndexFromDb : null,
+    rotationStart: row.rotation_start,
+    rotationEnd: row.rotation_end,
+    clickLimit: row.click_limit,
   };
 }
 
@@ -82,7 +87,7 @@ export async function getLinkById(id: string, userId: string): Promise<LinkItem 
                cd."domainName" as "customDomainName",
                lg.name as "groupName"
         FROM links l
-        LEFT JOIN custom_domains cd ON l."customDomainId" = cd.id
+        LEFT JOIN domains cd ON l."domainId" = cd.id
         LEFT JOIN link_groups lg ON l."groupId" = lg.id AND lg."userId" = l."userId" 
         WHERE l.id = $1 AND l."userId" = $2;
     `;
@@ -114,7 +119,7 @@ export async function getLinkBySlug(slug: string, userId: string): Promise<LinkI
                cd."domainName" as "customDomainName",
                lg.name as "groupName"
         FROM links l
-        LEFT JOIN custom_domains cd ON l."customDomainId" = cd.id
+        LEFT JOIN domains cd ON l."domainId" = cd.id
         LEFT JOIN link_groups lg ON l."groupId" = lg.id AND lg."userId" = l."userId"
         WHERE l.slug = $1 AND l."userId" = $2; 
     `; 
@@ -152,18 +157,18 @@ export async function getLinkBySlugAndDomain(slug: string, domain: string): Prom
         SELECT l.*, l.last_used_target_index, 
                NULL as "customDomainName" 
         FROM links l
-        WHERE l.slug = $1 AND l."customDomainId" IS NULL; 
+        WHERE l.slug = $1 AND l."domainId" IS NULL; 
       `;
       queryParams = [slug];
       if (isLocalhostDomainInput) {
-        debugLog(`[linkService - getLinkBySlugAndDomain] Handling '${domain}' as a localhost domain. Searching for slug with no customDomainId.`);
+        debugLog(`[linkService - getLinkBySlugAndDomain] Handling '${domain}' as a localhost domain. Searching for slug with no domainId.`);
       }
     } else {
       query = `
         SELECT l.*, l.last_used_target_index, 
                cd."domainName" as "customDomainName"
         FROM links l
-        JOIN custom_domains cd ON l."customDomainId" = cd.id
+        JOIN domains cd ON l."domainId" = cd.id
         WHERE l.slug = $1 AND cd."domainName" = $2 AND cd.verified = TRUE; 
       `; 
       queryParams = [slug, domain];
@@ -193,56 +198,51 @@ export async function getLinkBySlugAndDomain(slug: string, domain: string): Prom
     return null; 
   }
 }
+export async function getLinksByUserId(
+  userId: string,
+  folderId?: string
+): Promise<LinkItem[]> {
 
-
-export async function getLinksByUserId(userId: string): Promise<LinkItem[]> {
-  debugLog(`[linkService - getLinksByUserId] DB_TYPE: ${DB_TYPE}, pool initialized: ${!!pool}. Fetching links for userId: ${userId}`);
-  if (DB_TYPE !== 'postgres' || !pool) {
-    console.error('[linkService - getLinksByUserId] PostgreSQL not configured.');
-    return [];
+  if (DB_TYPE !== 'postgres' || !pool) return [];
+  let sql = `
+    SELECT l.*, l.last_used_target_index,
+           cd."domainName" AS customDomainName,
+           lg.name AS groupName
+      FROM links l
+ LEFT JOIN domains cd ON l."domainId" = cd.id
+ LEFT JOIN link_groups lg ON l."groupId" = lg.id AND lg."userId" = l."userId"
+     WHERE l."userId" = $1`;
+  const params: any[] = [userId];
+  if (folderId) {
+    sql += ` AND l."folderId" = $2`;
+    params.push(folderId);
   }
-  try {
-    const query = `
-        SELECT l.*, l.last_used_target_index, 
-               cd."domainName" as "customDomainName",
-               lg.name as "groupName"
-        FROM links l
-        LEFT JOIN custom_domains cd ON l."customDomainId" = cd.id
-        LEFT JOIN link_groups lg ON l."groupId" = lg.id AND lg."userId" = l."userId"
-        WHERE l."userId" = $1 ORDER BY l."createdAt" DESC;
-    `;
-    const res = await pool.query(query, [userId]);
-    debugLog(`[linkService - getLinksByUserId] Found ${res.rowCount} links for userId: ${userId}`);
-    const links: LinkItem[] = [];
-    for (const row of res.rows) {
-        const pixels = await getRetargetingPixelsForLink(row.id);
-        links.push(formatLinkItem(row, pixels));
-    }
-    return links;
-  } catch (err) {
-    console.error(`[linkService - getLinksByUserId] Error fetching links for userId ${userId}:`, err);
-    throw new Error('Failed to retrieve links.');
-  }
+  sql += ` ORDER BY l."createdAt" DESC;`;
+  const res = await pool.query(sql, params);
+  debugLog(`[linkService] getLinksByUserId: userId=${userId}, folderId=${folderId}, linkDetails={res}`);
+  return Promise.all(
+    res.rows.map(async row => formatLinkItem(row, await getRetargetingPixelsForLink(row.id)))
+  );
 }
 
 
-const generateDbSlug = async (customDomainId?: string): Promise<string> => {
-  debugLog(`[linkService - generateDbSlug] DB_TYPE: ${DB_TYPE}, pool initialized: ${!!pool}. Generating slug for customDomainId: ${customDomainId}`);
+const generateDbSlug = async (domainId?: string): Promise<string> => {
+  debugLog(`[linkService - generateDbSlug] DB_TYPE: ${DB_TYPE}, pool initialized: ${!!pool}. Generating slug for domainId: ${domainId}`);
   if (DB_TYPE !== 'postgres' || !pool) throw new Error("[linkService - generateDbSlug] Database pool not initialized for slug generation (requires PostgreSQL).");
   let slug = Math.random().toString(36).substring(2, 8);
   let query;
   let params;
-  if (customDomainId) {
-    query = 'SELECT id FROM links WHERE slug = $1 AND "customDomainId" = $2';
-    params = [slug, customDomainId];
+  if (domainId) {
+    query = 'SELECT id FROM links WHERE slug = $1 AND "domainId" = $2';
+    params = [slug, domainId];
   } else {
-    query = 'SELECT id FROM links WHERE slug = $1 AND "customDomainId" IS NULL';
+    query = 'SELECT id FROM links WHERE slug = $1 AND "domainId" IS NULL';
     params = [slug];
   }
   let res = await pool.query(query, params);
   while (res.rows.length > 0) {
     slug = Math.random().toString(36).substring(2, 8);
-    if (customDomainId) params = [slug, customDomainId];
+    if (domainId) params = [slug, domainId];
     else params = [slug];
     res = await pool.query(query, params);
   }
@@ -258,11 +258,15 @@ interface CreateLinkData {
   title?: string;
   tags?: string[];
   isCloaked?: boolean;
-  customDomainId?: string;
+  domainId?: string;
   groupId?: string;
   deepLinkConfig?: LinkItem['deepLinkConfig'];
   abTestConfig?: LinkItem['abTestConfig'];
   retargetingPixelIds?: string[];
+  folderId?: string;
+  rotationStart?: string
+  rotationEnd?: string
+  clickLimit?: number
 }
 
 export async function createLink(data: CreateLinkData): Promise<LinkItem> {
@@ -276,26 +280,26 @@ export async function createLink(data: CreateLinkData): Promise<LinkItem> {
     await client.query('BEGIN');
     const linkId = uuidv4();
     const createdAt = new Date().toISOString();
-    const slugToUse = data.slug ? data.slug.trim() : await generateDbSlug(data.customDomainId); 
+    const slugToUse = data.slug ? data.slug.trim() : await generateDbSlug(data.domainId); 
 
     let slugConflictQuery, slugConflictParams;
-    if (data.customDomainId) {
-        slugConflictQuery = 'SELECT id FROM links WHERE slug = $1 AND "customDomainId" = $2';
-        slugConflictParams = [slugToUse, data.customDomainId];
+    if (data.domainId) {
+        slugConflictQuery = 'SELECT id FROM links WHERE slug = $1 AND "domainId" = $2';
+        slugConflictParams = [slugToUse, data.domainId];
     } else {
-        slugConflictQuery = 'SELECT id FROM links WHERE slug = $1 AND "customDomainId" IS NULL';
+        slugConflictQuery = 'SELECT id FROM links WHERE slug = $1 AND "domainId" IS NULL';
         slugConflictParams = [slugToUse];
     }
     const slugCheck = await client.query(slugConflictQuery, slugConflictParams);
     if (slugCheck.rows.length > 0) {
-        throw new Error(`Slug '${slugToUse}' is already taken${data.customDomainId ? ' on this domain' : ''}.`);
+        throw new Error(`Slug '${slugToUse}' is already taken${data.domainId ? ' on this domain' : ''}.`);
     }
 
     let actualShortUrlBase: string;
     let customDomainName; // This will be used for the returned LinkItem
 
-    if (data.customDomainId) {
-        const domainRes = await client.query('SELECT "domainName" FROM custom_domains WHERE id = $1 AND "userId" = $2', [data.customDomainId, data.userId]);
+    if (data.domainId) {
+        const domainRes = await client.query('SELECT "domainName" FROM domains WHERE id = $1 AND "userId" = $2', [data.domainId, data.userId]);
         if (domainRes.rows.length > 0) {
             customDomainName = domainRes.rows[0].domainName;
             actualShortUrlBase = customDomainName;
@@ -313,20 +317,28 @@ export async function createLink(data: CreateLinkData): Promise<LinkItem> {
     const shortUrl = `${protocol}${actualShortUrlBase}/${slugToUse}`; 
 
     const linkQuery = `
-      INSERT INTO links 
-        (id, "userId", "originalUrl", "shortUrl", slug, title, tags, "isCloaked", "customDomainId", "groupId", "deepLinkConfig", "abTestConfig", targets, "createdAt", "updatedAt", "clickCount", last_used_target_index)
-      VALUES 
-        ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $14, 0, NULL)
+      INSERT INTO links
+        (id, "userId", "originalUrl", "shortUrl", slug, title, tags, "isCloaked",
+         "domainId", "groupId", "deepLinkConfig", "abTestConfig",
+         targets, "folderId", "clickCount", last_used_target_index, "createdAt", "updatedAt", 
+         "rotationStart", "rotationEnd", "clickLimit")
+      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,0,NULL,$15,$15,$16,$17,$18)
       RETURNING *, last_used_target_index;
     `;
+
     const linkParams = [
       linkId, data.userId, data.originalUrl, shortUrl, slugToUse, data.title,
-      data.tags, data.isCloaked ?? false, data.customDomainId, data.groupId,
+      data.tags, data.isCloaked ?? false, data.domainId, data.groupId,
       data.deepLinkConfig ? JSON.stringify(data.deepLinkConfig) : null,
       data.abTestConfig ? JSON.stringify(data.abTestConfig) : null,
       JSON.stringify(data.targets), 
-      createdAt
+      data.folderId,
+      createdAt,
+      data.rotationStart,
+      data.rotationEnd,
+      data.clickLimit,
     ];
+
     const res = await client.query(linkQuery, linkParams);
     let newLinkRow = res.rows[0];
     newLinkRow.customDomainName = customDomainName; 
@@ -350,72 +362,129 @@ export async function createLink(data: CreateLinkData): Promise<LinkItem> {
     console.error('[linkService - createLink] Error creating link:', err);
     if (err.message.includes('already taken') || err.message.includes('Custom domain not found')) throw err;
     if (err.constraint === 'links_shortUrl_key') throw new Error('Generated short URL conflict, please try again.');
-    if (err.constraint === 'unique_slug_on_domain') throw new Error(`Slug '${data.slug}' is already taken${data.customDomainId ? ' on this domain' : ''}.`);
+    if (err.constraint === 'unique_slug_on_domain') throw new Error(`Slug '${data.slug}' is already taken${data.domainId ? ' on this domain' : ''}.`);
     throw new Error('Failed to create link.');
   } finally {
     client.release();
   }
 }
 
-export async function updateLink(linkId: string, userId: string, updates: Partial<CreateLinkData> & { originalUrl?: string, targets?: LinkTarget[], lastUsedTargetIndex?: number | null }): Promise<LinkItem | null> {
-    debugLog(`[linkService - updateLink] DB_TYPE: ${DB_TYPE}, pool initialized: ${!!pool}. Updating linkId: ${linkId}`);
-    if (DB_TYPE !== 'postgres' || !pool) {
-        console.error('[linkService - updateLink] PostgreSQL not configured, cannot update link.');
-        throw new Error('Database not configured for link update.');
+export async function updateLink(
+  linkId: string,
+  userId: string,
+  updates: Partial<CreateLinkData & { lastUsedTargetIndex?: number }>
+): Promise<LinkItem | null> {
+  debugLog(`[linkService - updateLink] Updating linkId: ${linkId}`);
+  if (DB_TYPE !== 'postgres' || !pool) {
+    throw new Error('Database not configured for link update.');
+  }
+
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+
+    // Ensure the link exists and belongs to this user
+    const existing = await client.query(
+      `SELECT * FROM links WHERE id = $1 AND "userId" = $2`,
+      [linkId, userId]
+    );
+    if (existing.rows.length === 0) {
+      throw new Error('Link not found or you do not have permission to update it.');
     }
-    const client = await pool.connect();
-    try {
-        await client.query('BEGIN');
-        const existingLinkRes = await client.query('SELECT * FROM links WHERE id = $1 AND "userId" = $2', [linkId, userId]);
-        if (existingLinkRes.rows.length === 0) throw new Error('Link not found or you do not have permission to update it.');
-        const updatableFields = ['originalUrl', 'title', 'tags', 'isCloaked', 'groupId','deepLinkConfig', 'abTestConfig', 'targets', 'lastUsedTargetIndex'];
-        const setClauses: string[] = [];
-        const queryParams: any[] = [linkId, userId];
-        let paramIndex = 3;
-        for (const field of updatableFields) {
-            if ((updates as any)[field] !== undefined) {
-                setClauses.push(`"${field === 'lastUsedTargetIndex' ? 'last_used_target_index' : field}" = $${paramIndex++}`);
-                let value = (updates as any)[field];
-                if (field === 'deepLinkConfig' || field === 'abTestConfig' || field === 'targets') value = value ? JSON.stringify(value) : null;
-                if (field === 'tags' && !Array.isArray(value)) value = value ? (value as string).split(',').map(t=>t.trim()) : null;
-                queryParams.push(value);
-            }
+
+    // 1) List all fields we now allow updating, including rotation and clickLimit
+    const updatableFields = [
+      'originalUrl',
+      'title',
+      'tags',
+      'isCloaked',
+      'groupId',
+      'deepLinkConfig',
+      'abTestConfig',
+      'targets',
+      'lastUsedTargetIndex',
+      'folderId',
+      'rotationStart',
+      'rotationEnd',
+      'clickLimit',
+    ];
+
+    // 2) Build SET clauses dynamically
+    const setClauses: string[] = [];
+    const queryParams: any[] = [linkId, userId];
+    let idx = 3; // next placeholder index
+
+    for (const field of updatableFields) {
+      if ((updates as any)[field] !== undefined) {
+        // Map JS field name → PostgreSQL column name
+        let column = field;
+        if (field === 'lastUsedTargetIndex') column = 'last_used_target_index';
+        else if (field === 'rotationStart')     column = 'rotation_start';
+        else if (field === 'rotationEnd')       column = 'rotation_end';
+        else if (field === 'clickLimit')        column = 'click_limit';
+        debugLog(`[linkService - updateLink] Updating field: ${field} to column: ${column}`);
+
+        setClauses.push(`"${column}" = $${idx}`);
+
+        let value = (updates as any)[field];
+        // JSON-encode complex objects
+        if (field === 'deepLinkConfig' || field === 'abTestConfig' || field === 'targets') {
+          value = value ? JSON.stringify(value) : null;
         }
-        let needsDbUpdate = setClauses.length > 0;
-        if (needsDbUpdate) {
-            queryParams.push(new Date().toISOString()); 
-            setClauses.push(`"updatedAt" = $${paramIndex++}`);
-            const updateQuery = `UPDATE links SET ${setClauses.join(', ')} WHERE id = $1 AND "userId" = $2 RETURNING *, last_used_target_index;`;
-            debugLog(`[linkService - updateLink] Executing update for linkId ${linkId} with query: ${updateQuery.substring(0, 100)}... and params: ${JSON.stringify(queryParams)}`);
-            await client.query(updateQuery, queryParams);
+        // Normalize tags into a text[]
+        if (field === 'tags' && !Array.isArray(value)) {
+          value = value ? (value as string).split(',').map(t => t.trim()) : null;
         }
-        if (updates.retargetingPixelIds !== undefined) {
-            needsDbUpdate = true; 
-            await client.query('DELETE FROM link_retargeting_pixels WHERE "linkId" = $1', [linkId]);
-            if (updates.retargetingPixelIds.length > 0) {
-                for (const pixelId of updates.retargetingPixelIds) {
-                    await client.query('INSERT INTO link_retargeting_pixels ("linkId", "pixelId") VALUES ($1, $2) ON CONFLICT DO NOTHING', [linkId, pixelId]);
-                }
-            }
-            if (setClauses.length === 0) await client.query('UPDATE links SET "updatedAt" = CURRENT_TIMESTAMP WHERE id = $1 AND "userId" = $2', [linkId, userId]);
-        }
-        if (!needsDbUpdate) {
-             debugLog(`[linkService - updateLink] No actual DB update needed for linkId ${linkId}. Rolling back.`);
-             await client.query('ROLLBACK'); client.release(); return getLinkById(linkId, userId); 
-        }
-        await client.query('COMMIT');
-        debugLog(`[linkService - updateLink] Link updated successfully for linkId ${linkId}`);
-        const updatedLinkDataRes = await client.query('SELECT l.*, l.last_used_target_index, cd."domainName" as "customDomainName", lg.name as "groupName" FROM links l LEFT JOIN custom_domains cd ON l."customDomainId" = cd.id LEFT JOIN link_groups lg ON l."groupId" = lg.id AND lg."userId" = l."userId" WHERE l.id = $1 AND l."userId" = $2', [linkId, userId]);
-        if(updatedLinkDataRes.rows.length === 0) return null; 
-        const pixels = await getRetargetingPixelsForLink(linkId);
-        return formatLinkItem(updatedLinkDataRes.rows[0], pixels);
-    } catch (err: any) {
-        await client.query('ROLLBACK');
-        console.error(`[linkService - updateLink] Error updating link ${linkId}:`, err);
-        throw new Error(err.message || 'Failed to update link.');
-    } finally {
-        client.release();
+
+        queryParams.push(value);
+        idx++;
+      }
     }
+
+    // 3) If nothing to update, rollback
+    if (setClauses.length === 0) {
+      await client.query('ROLLBACK');
+      return getLinkById(linkId, userId);
+    }
+
+    // 4) Always bump updatedAt
+    setClauses.push(`"updatedAt" = $${idx}`);
+    queryParams.push(new Date().toISOString());
+    idx++;
+
+    // 5) Execute UPDATE
+    const sql = `
+      UPDATE links
+      SET ${setClauses.join(', ')}
+      WHERE id = $1 AND "userId" = $2
+      RETURNING *
+    `;
+    debugLog(`[linkService - updateLink] Executing SQL: ${sql} with params: ${JSON.stringify(queryParams)}`);
+    await client.query(sql, queryParams);
+
+    await client.query('COMMIT');
+
+    // 6) Re‐fetch and return the updated row
+    const refreshed = await client.query(
+      `SELECT l.*, cd."domainName" AS "customDomainName", lg.name AS "groupName"
+         FROM links l
+         LEFT JOIN domains cd ON l."domainId" = cd.id
+         LEFT JOIN link_groups lg ON l."groupId" = lg.id AND lg."userId" = l."userId"
+        WHERE l.id = $1 AND l."userId" = $2`,
+      [linkId, userId]
+    );
+    if (refreshed.rows.length === 0) return null;
+
+    const pixels = await getRetargetingPixelsForLink(linkId);
+    return formatLinkItem(refreshed.rows[0], pixels);
+
+  } catch (err: any) {
+    await client.query('ROLLBACK');
+    console.error(`Error updating link ${linkId}:`, err);
+    throw err;
+  } finally {
+    client.release();
+  }
 }
 
 export async function deleteLink(id: string, userId: string): Promise<boolean> {

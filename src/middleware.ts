@@ -117,7 +117,10 @@ export async function middleware(request: NextRequest) {
               else if (request.method === 'GET') requiredPermission = 'links:read';
             } else if (pathname.startsWith('/api/analytics')) {
               requiredPermission = 'analytics:read';
-            } else if (pathname.startsWith('/api/custom-domains')) {
+            } else if (pathname.startsWith('/api/domains')) {
+                if (request.method === 'POST' || request.method === 'PUT' || request.method === 'DELETE') requiredPermission = 'domains:write';
+                else if (request.method === 'GET') requiredPermission = 'domains:read';
+            } else if (pathname.startsWith('/api/folders')) {
                 if (request.method === 'POST' || request.method === 'PUT' || request.method === 'DELETE') requiredPermission = 'domains:write';
                 else if (request.method === 'GET') requiredPermission = 'domains:read';
             } else if (pathname.startsWith('/api/campaign-templates')) {

@@ -1,3 +1,5 @@
+export type DomainType = 'local' | 'custom';
+
 export interface LinkTarget {
   url: string;
   weight?: number; // For URL rotation or A/B testing split
@@ -21,7 +23,11 @@ export interface RetargetingPixel {
   createdAt: string; // ISO date string
   updatedAt?: string; // ISO date string
 }
-
+export interface ABTestConfig {
+  variantAUrl: string;
+  variantBUrl: string;
+  splitPercentage: number;
+}
 
 export interface LinkItem {
   id:string;
@@ -34,16 +40,21 @@ export interface LinkItem {
   createdAt: string; 
   updatedAt?: string; 
   customDomain?: string; // This is the domain NAME, not ID
-  customDomainId?: string; // Keep the ID for linking if needed separately
+  domainId?: string; // Keep the ID for linking if needed separately
   isCloaked?: boolean;
   deepLinkConfig?: { iosAppUriScheme: string; androidAppUriScheme: string; fallbackUrl?: string };
-  abTestConfig?: { variantAUrl: string; variantBUrl: string; splitPercentage: number };
+  abTestConfig?: ABTestConfig
   retargetingPixels?: RetargetingPixel[]; // Changed to full RetargetingPixel objects
   tags?: string[];
   title?: string;
   groupId?: string; 
   groupName?: string; // Added for displaying group name directly
   lastUsedTargetIndex?: number | null; // Added for round-robin URL rotation, can be null
+  folderId: string | null; // Added for folder organization
+  domain: string;
+  rotationStart?: string   
+  rotationEnd?: string     
+  clickLimit?: number   
 }
 
 export interface AnalyticEvent {
