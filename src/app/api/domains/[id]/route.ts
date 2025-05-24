@@ -43,7 +43,7 @@ export async function DELETE(request: Request, context: RouteContext) {
       return NextResponse.json({ message: "Unauthorized" }, { status: 401 });
     }
 
-    await DomainModel.delete(params.id;
+    await DomainModel.delete(params.id);
     return NextResponse.json({ message: "Deleted" });
   } catch (error) {
     console.error(`[API SUB-DOMAINS ID DELETE] Error deleting ${params.id}:`, error);
