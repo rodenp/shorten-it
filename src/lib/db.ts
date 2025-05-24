@@ -65,28 +65,18 @@ async function createPostgresTables() {
     );
     await dbClient.query('CREATE UNIQUE INDEX IF NOT EXISTS "token_identifier_idx" ON verification_tokens(token, identifier);');
 
-    await dbClient.query( 
-      'CREATE TABLE IF NOT EXISTS custom_domains ( ' +
-      '  id TEXT PRIMARY KEY, ' +
-      '  "userId" TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE, ' +
-      '  "domainName" TEXT NOT NULL, ' +
-      '  verified BOOLEAN DEFAULT FALSE, ' +
-      '  "createdAt" TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP, ' +
-      '  "updatedAt" TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP ' +
-      ');' 
-    );
-    await dbClient.query('CREATE UNIQUE INDEX IF NOT EXISTS "userId_domainName_idx" ON custom_domains("userId", "domainName");');
+    await dbClient.query(`
 
-    await dbClient.query( 
-      'CREATE TABLE IF NOT EXISTS sub_domains ( ' +
-      '  id TEXT PRIMARY KEY, ' +
-      '  "userId" TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE, ' +
-      '  "subdomainName" TEXT NOT NULL, ' +
-      '  "createdAt" TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP, ' +
-      '  "updatedAt" TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP ' +
-      ');' 
+      CREATE TABLE IF NOT EXISTS domains (
+        id TEXT PRIMARY KEY ,
+        "userId" TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE, 
+        "domainName" TEXT NOT NULL UNIQUE,
+        type    TEXT NOT NULL CHECK (type IN ('local','custom')),
+        "createdAt" TIMESTAMPTZ NOT NULL DEFAULT now(),
+        "updatedAt" TIMESTAMPTZ NOT NULL DEFAULT now()
+      );` 
     );
-    await dbClient.query('CREATE UNIQUE INDEX IF NOT EXISTS "userId_subdomainName_idx" ON sub_domains("userId", "subdomainName");');
+    await dbClient.query('CREATE UNIQUE INDEX IF NOT EXISTS "userId_domainName_idx" ON domains("userId", "domainName");');
 
     await dbClient.query(` 
       CREATE TABLE IF NOT EXISTS campaign_templates (
@@ -179,7 +169,7 @@ async function createPostgresTables() {
       '  title TEXT, ' +
       '  tags TEXT[], ' +
       '  "isCloaked" BOOLEAN DEFAULT FALSE, ' +
-      '  "customDomainId" TEXT REFERENCES custom_domains(id) ON DELETE SET NULL, ' +
+      '  "domainId" TEXT REFERENCES domains(id) ON DELETE SET NULL, ' +
       '  "groupId" TEXT REFERENCES link_groups(id) ON DELETE SET NULL, ' +
       '  "deepLinkConfig" JSONB, ' +
       '  "abTestConfig" JSONB, ' +
@@ -187,12 +177,15 @@ async function createPostgresTables() {
       '  last_used_target_index INTEGER DEFAULT NULL, ' + // Added this line
       '  "createdAt" TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP, ' +
       '  "updatedAt" TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP, ' +
-      '  CONSTRAINT "unique_slug_on_domain" UNIQUE (slug, "customDomainId") ' +
+      '  "rotation_start" TIMESTAMPTZ DEFAULT NULL, ' +
+      '  "rotation_end" TIMESTAMPTZ DEFAULT NULL, ' +
+      '  "click_limit" INTEGER DEFAULT NULL, ' +
+      '  CONSTRAINT "unique_slug_on_domain" UNIQUE (slug, "domainId") ' +
       ');' 
     );
     await dbClient.query('CREATE INDEX IF NOT EXISTS "link_userId_idx" ON links("userId");');
     await dbClient.query('CREATE INDEX IF NOT EXISTS "link_groupId_idx" ON links("groupId");');
-    await dbClient.query('CREATE INDEX IF NOT EXISTS "link_customDomainId_idx" ON links("customDomainId");');
+    await dbClient.query('CREATE INDEX IF NOT EXISTS "link_domainId_idx" ON links("domainId");');
     await dbClient.query('CREATE INDEX IF NOT EXISTS "link_slug_idx" ON links(slug);');
 
     await dbClient.query( 
@@ -222,6 +215,135 @@ async function createPostgresTables() {
     await dbClient.query('CREATE INDEX IF NOT EXISTS "analytic_event_timestamp_idx" ON analytic_events(timestamp);' );
     await dbClient.query('CREATE INDEX IF NOT EXISTS "analytic_event_country_idx" ON analytic_events(country);' );
     await dbClient.query('CREATE INDEX IF NOT EXISTS "analytic_event_deviceType_idx" ON analytic_events("deviceType");' );
+
+    await dbClient.query(`
+      CREATE TABLE IF NOT EXISTS folders (
+        id SERIAL PRIMARY KEY,
+        "userId" TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        name TEXT NOT NULL,
+        "createdAt" TIMESTAMPTZ NOT NULL DEFAULT now()
+      );`
+    );
+
+    await dbClient.query(`
+      ALTER TABLE links
+        ADD COLUMN IF NOT EXISTS "folderId" INTEGER REFERENCES folders(id) ON DELETE SET NULL;`
+    );
+
+    await dbClient.query(`
+      CREATE TABLE IF NOT EXISTS plans (
+        id TEXT PRIMARY KEY,
+        name TEXT NOT NULL,
+        price NUMERIC NOT NULL,
+        period TEXT NOT NULL,
+        "limit" BIGINT NOT NULL
+      );`
+    );
+    await dbClient.query(`
+      CREATE TABLE IF NOT EXISTS features (
+        id SERIAL PRIMARY KEY,
+        key TEXT UNIQUE NOT NULL,
+        label TEXT NOT NULL,
+        section TEXT NOT NULL  -- 'Core' | 'Advanced' | 'Essentials'
+      );`
+    );
+    await dbClient.query(`    
+      CREATE TABLE IF NOT EXISTS plan_features (
+        plan_id TEXT REFERENCES plans(id) ON DELETE CASCADE,
+        feature_id INT REFERENCES features(id) ON DELETE CASCADE,
+        PRIMARY KEY (plan_id, feature_id)
+      );`
+    );
+    await dbClient.query(`
+      CREATE TABLE IF NOT EXISTS subscriptions (
+        "userId"          TEXT        PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+        "planId"          TEXT        NOT NULL REFERENCES plans(id),
+        "nextBillingDate" TIMESTAMP   NULL,
+        usage             BIGINT      NOT NULL DEFAULT 0,
+        "limit"           BIGINT      NOT NULL
+      );`
+    );
+
+    const { rowCount } = await pool.query(`SELECT 1 FROM plans LIMIT 1`);
+    if (!rowCount) {
+      // Insert plans
+      await dbClient.query(
+        `INSERT INTO plans (id,name,price,period,"limit") VALUES
+          ('free','Free',0,'Monthly',50000),
+          ('hobby','Hobby',5,'Monthly',0),
+          ('personal','Personal',18,'Monthly',0),
+          ('team','Team',48,'Monthly',0),
+          ('enterprise','Enterprise',148,'Monthly',0)
+        `
+      );
+      // Insert features, grouped by section
+      const allFeatures = [
+        // Core
+        { key: 'users', label: 'Users', section: 'Core' },
+        { key: 'domains', label: 'Custom domains', section: 'Core' },
+        { key: 'branded', label: 'Branded links total', section: 'Core' },
+        { key: 'automation', label: 'Link automation (year 1)', section: 'Core' },
+        { key: 'redirects', label: 'Redirects', section: 'Core' },
+        { key: 'clicks', label: 'Tracked clicks', section: 'Core' },
+        // Advanced
+        { key: 'country', label: 'Country targeting', section: 'Advanced' },
+        { key: 'region', label: 'Region targeting', section: 'Advanced' },
+        { key: 'expireDate', label: 'Link expiration by Date', section: 'Advanced' },
+        { key: 'encryption', label: 'End-to-end link encryption', section: 'Advanced' },
+        { key: 'expireClick', label: 'Link expiration by Click Limit', section: 'Advanced' },
+        { key: 'cloaking', label: 'Link cloaking', section: 'Advanced' },
+        { key: 'referrer', label: 'Referrer hiding', section: 'Advanced' },
+        { key: 'password', label: 'Password protection', section: 'Advanced' },
+        { key: 'deeplinks', label: 'Deep links', section: 'Advanced' },
+        { key: 'multiteams', label: 'Multiple teams', section: 'Advanced' },
+        { key: 'sso', label: 'Single sign-on (SSO)', section: 'Advanced' },
+        { key: 'uptime', label: 'SLA of 99,9% uptime', section: 'Advanced' },
+        { key: 'exportS3', label: 'Export raw click data to S3', section: 'Advanced' },
+        { key: 'agreements', label: 'Custom agreements', section: 'Advanced' },
+        { key: 'ai', label: 'AI Assistant', section: 'Advanced' },
+        // Essentials
+        { key: 'destUrl', label: 'Destination URL updating', section: 'Essentials' },
+        { key: 'api', label: 'API', section: 'Essentials' },
+        { key: 'slugEdit', label: 'URL shortcode (slug) editing', section: 'Essentials' },
+        { key: 'ssl', label: "SSL (by Let's Encrypt)", section: 'Essentials' },
+        { key: 'mobile', label: 'Mobile targeting', section: 'Essentials' },
+        { key: 'chat', label: 'Chat support', section: 'Essentials' },
+        { key: 'tags', label: 'Tags for links', section: 'Essentials' },
+        { key: 'qr', label: 'QR code', section: 'Essentials' },
+        { key: 'mainPage', label: 'Main page redirect', section: 'Essentials' },
+        { key: '404', label: '404 redirect', section: 'Essentials' },
+        { key: '301', label: '301 redirect code', section: 'Essentials' },
+        { key: 'integrations', label: 'App integrations', section: 'Essentials' },
+        { key: 'tools', label: 'Tools & Extensions', section: 'Essentials' },
+        { key: 'utm', label: 'UTM builder', section: 'Essentials' },
+        { key: 'gdpr', label: 'GDPR privacy', section: 'Essentials' },
+        { key: 'import', label: 'Link import', section: 'Essentials' },
+        { key: 'export', label: 'Link export', section: 'Essentials' },
+        { key: 'ab', label: 'A/B Testing', section: 'Essentials' },
+      ];
+      for (const feat of allFeatures) {
+        await dbClient.query(
+          `INSERT INTO features (key, label, section) VALUES ($1,$2,$3)`,
+          [feat.key, feat.label, feat.section]
+        );
+      }
+      // Map features → plans (insert only the features each plan has)
+      const planFeatureMap: Record<string, string[]> = {
+        free: ['users','domains','branded','redirects','clicks'],
+        hobby: ['users','domains','branded','redirects','clicks','referrer'],
+        personal: ['users','domains','branded','automation','redirects','clicks','cloaking','expireDate','password'],
+        team: ['users','domains','branded','automation','redirects','clicks','cloaking','expireDate','password','deeplinks','region','sso'],
+        enterprise: Object.keys(allFeatures)  // all features
+      };
+      for (const [planId, feats] of Object.entries(planFeatureMap)) {
+        for (const key of feats) {
+          await dbClient.query(`
+            INSERT INTO plan_features (plan_id, feature_id)
+            SELECT $1, f.id FROM features f WHERE f.key = $2
+          `, [planId, key]);
+        }
+      }
+    }
 
     debugLog('PostgreSQL tables checked/created successfully.');
   } catch (err) {

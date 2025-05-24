@@ -1,3 +1,5 @@
+// src/app/(app)/layout.tsx
+
 import Header from '@/components/layout/header';
 import AppSidebar from '@/components/layout/sidebar';
 import { SidebarProvider, SidebarInset } from '@/components/ui/sidebar';

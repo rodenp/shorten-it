@@ -7,6 +7,7 @@ import {
   deleteLink,
 } from '@/lib/linkService';
 import { getUserIdFromRequest } from '@/lib/auth-utils';
+import { debug } from 'console';
 
 // Basic UUID check (can be refined)
 const isUUID = (str: string) => /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/.test(str);
@@ -39,6 +40,8 @@ export async function GET(request: Request, context: { params: { linkId: string 
     if (!link) {
       return NextResponse.json({ message: 'Link not found or not authorized' }, { status: 404 });
     }
+    const resp=NextResponse.json(link);
+    debug(`linkService - getUserIdFromRequest:Fetched link ${linkIdentifier}: ${link},response=${resp}`);
     return NextResponse.json(link);
   } catch (error: any) {
     console.error(`Error fetching link ${linkIdentifierForError}:`, error);
@@ -48,6 +51,37 @@ export async function GET(request: Request, context: { params: { linkId: string 
 
 // PUT /api/links/[linkId] - This should still expect a true ID for updates
 export async function PUT(request: Request, context: { params: { linkId: string } }) {
+  let linkIdForError = "unknown";
+  try {
+    const resolvedParams = await context.params; // Await the params
+    const { linkId } = resolvedParams;
+    linkIdForError = linkId; // Assign for use in catch block
+
+    // Add a check to ensure linkId is a UUID for PUT operations if necessary
+    if (!isUUID(linkId)) {
+      return NextResponse.json({ message: 'Invalid link ID format for update' }, { status: 400 });
+    }
+    const userId = await getUserIdFromRequest(request);
+    if (!userId) {
+      return NextResponse.json({ message: 'Unauthorized' }, { status: 401 });
+    }
+    const updates = await request.json();
+
+    const updatedLink = await updateLink(linkId, userId, updates);
+
+    if (!updatedLink) {
+      return NextResponse.json({ message: 'Link not found or update failed' }, { status: 404 });
+    }
+    return NextResponse.json(updatedLink);
+  } catch (error: any) {
+    console.error(`Error updating link ${linkIdForError}:`, error);
+     const statusCode = error.message?.includes('not found') ? 404 : error.message?.includes('already taken')? 409: 500;
+    return NextResponse.json({ message: error.message || 'Error updating link' }, { status: statusCode });
+  }
+}
+
+// PUT /api/links/[linkId] - This should still expect a true ID for updates
+export async function PATCH(request: Request, context: { params: { linkId: string } }) {
   let linkIdForError = "unknown";
   try {
     const resolvedParams = await context.params; // Await the params

@@ -1,221 +1,381 @@
+// src/app/(app)/links/page.tsx
 'use client';
 
-import { useState, useEffect, useMemo, useCallback } from 'react';
-import { LinkCard } from '@/components/dashboard/link-card';
-import type { LinkItem, LinkGroup } from '@/types';
-import { Input } from '@/components/ui/input';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Button } from '@/components/ui/button';
-import { Search, PlusCircle, ArrowDownUp, FolderKanban } from 'lucide-react';
+import { useState, useEffect, useCallback } from 'react';
 import Link from 'next/link';
+import { Button } from '@/components/ui/button';
+import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
+import {
+  Table, TableHeader, TableRow, TableHead, TableBody, TableCell
+} from '@/components/ui/table';
+import { Checkbox } from '@/components/ui/checkbox';
+import { Avatar, AvatarFallback } from '@/components/ui/avatar';
+import { Tooltip, TooltipTrigger, TooltipContent } from '@/components/ui/tooltip';
+import {
+  Dialog, DialogTrigger, DialogContent, DialogHeader, DialogTitle, DialogFooter
+} from '@/components/ui/dialog';
+import { Badge } from '@/components/ui/badge';
+import {
+  Plus, RefreshCw, Copy, ExternalLink, BarChart2,
+  Trash2, Pencil, Tag, Filter,
+} from 'lucide-react';
+import { Input } from '@/components/ui/input';
+import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from '@/components/ui/select';
 import { useToast } from '@/hooks/use-toast';
+import { CreateLinkBar } from '@/components/dashboard/create-linker-bar';
+import { useLinkParams } from '@/context/LinkParamsContext';
 
-export default function MyLinksPage() {
-  const [allLinks, setAllLinks] = useState<LinkItem[]>([]);
-  const [linkGroups, setLinkGroups] = useState<LinkGroup[]>([]);
-  const [searchTerm, setSearchTerm] = useState('');
-  const [sortBy, setSortBy] = useState('createdAt_desc'); 
-  const [filterGroupId, setFilterGroupId] = useState('all'); 
+interface LinkItem {
+  id: string;
+  createdAt: string;
+  shortUrl: string;
+  originalUrl: string;
+  title?: string;
+  clickCount: number;
+  conversionCount: number;
+  tags: string[];
+  domainId: string;
+  folderId?: string;
+  rotationStart?: string;
+  rotationEnd?: string;
+  clickLimit?: number;
+}
+
+interface Folder {
+  id: string;
+  name: string;
+}
+
+interface DomainOption {
+  id: string;
+  name: string;
+  type: 'custom' | 'sub';
+}
+
+export default function LinksPage() {
   const { toast } = useToast();
-  const [isLoading, setIsLoading] = useState(true);
 
-  const fetchLinksAndGroups = useCallback(async () => {
-    setIsLoading(true);
+  // Domains dropdown
+  const [domains, setDomains] = useState<DomainOption[]>([]);
+  const [selectedDomain, setSelectedDomain] = useState<string>('');
+
+  // Folder tabs
+  const [folders, setFolders] = useState<Folder[]>([]);
+  const [activeFolder, setActiveFolder] = useState<string | null>(null);
+
+  // Links table
+  const [links, setLinks] = useState<LinkItem[]>([]);
+  const [allLinks, setAllLinks] = useState<LinkItem[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  // New folder modal
+  const [showNewFolder, setShowNewFolder] = useState(false);
+  const [newFolderName, setNewFolderName] = useState('');
+
+  // Context for selected domain host
+  const { domain, setDomain } = useLinkParams();
+
+  // Fetch custom + sub domains
+  const fetchDomains = useCallback(async () => {
     try {
-      const [linksResponse, groupsResponse] = await Promise.all([
-        fetch('/api/links'),
-        fetch('/api/link-groups')
-      ]);
+      const res = await fetch('/api/domains?types=local,custom');
+      if (!res.ok) throw new Error('Could not fetch domains');
+      const list = await res.json() as { id: string; domainName: string; type: 'local' | 'custom' }[];
 
-      if (linksResponse.ok) {
-        const linksData = await linksResponse.json();
-        setAllLinks(linksData);
-      } else {
-        console.error('Failed to fetch links');
-        toast({ title: 'Error', description: 'Could not fetch your links.', variant: 'destructive' });
-        setAllLinks([]); 
+      const opts = list.map(d => ({ id: d.id, name: d.domainName, type: d.type }));
+      setDomains(opts);
+      if (opts.length) {
+        const first = opts[0];
+        setSelectedDomain(first.id);
+        const host = first.name.replace(/^https?:\/\//, '');
+        setDomain(host);
       }
+    } catch (err: any) {
+      toast({ title: 'Error', description: err.message, variant: 'destructive' });
+    }
+  }, [toast, setDomain]);
 
-      if (groupsResponse.ok) {
-        const groupsData = await groupsResponse.json();
-        setLinkGroups(groupsData);
-      } else {
-        console.error('Failed to fetch link groups');
-        toast({ title: 'Error', description: 'Could not fetch link groups for filtering.', variant: 'destructive' });
-      }
-    } catch (error) {
-      console.error('Error fetching data:', error);
-      toast({ title: 'Network Error', description: 'Could not connect to the server to fetch data.', variant: 'destructive' });
-      setAllLinks([]); 
+  // Fetch folders
+  const fetchFolders = useCallback(async () => {
+    try {
+      const res = await fetch('/api/folders');
+      if (!res.ok) throw new Error('Could not fetch folders');
+      setFolders(await res.json());
+    } catch (err: any) {
+      toast({ title: 'Error', description: err.message, variant: 'destructive' });
+    }
+  }, [toast]);
+
+  // Fetch links by domain & folder
+  const fetchLinks = useCallback(async () => {
+    setLoading(true);
+    try {
+      const params = new URLSearchParams();
+      if (selectedDomain) params.set('domainId', selectedDomain);
+      if (activeFolder) params.set('folderId', activeFolder);
+      const res = await fetch(`/api/links?${params.toString()}`);
+      if (!res.ok) throw new Error('Could not fetch links');
+      setAllLinks(await res.json());
+    } catch (err: any) {
+      toast({ title: 'Error', description: err.message, variant: 'destructive' });
     } finally {
-      setIsLoading(false);
+      setLoading(false);
     }
-  }, [toast]);
+  }, [selectedDomain, activeFolder, toast]);
 
+  // Filter links by selected domain
   useEffect(() => {
-    fetchLinksAndGroups();
-  }, [fetchLinksAndGroups]);
+    if (!selectedDomain) {
+      setLinks(allLinks);
+      return;
+    }
+    setLinks(allLinks.filter(link => link.domainId === selectedDomain));
+  }, [allLinks, selectedDomain]);
 
-  const handleLinkDelete = useCallback(async (linkId: string) => {
+  // Delete link
+  const handleLinkDelete = useCallback(async (id: string) => {
     try {
-      const response = await fetch(`/api/links/${linkId}`, {
-        method: 'DELETE',
-      });
-      if (response.ok) {
-        toast({ title: 'Link Deleted', description: 'The link has been successfully deleted.', variant: 'default' });
-        setAllLinks(prevLinks => prevLinks.filter(link => link.id !== linkId));
-      } else {
-        const errorData = await response.json().catch(() => ({ message: 'Could not delete the link.'}));
-        throw new Error(errorData.message);
-      }
-    } catch (error: any) {
-      toast({ title: 'Error Deleting Link', description: error.message, variant: 'destructive' });
+      const res = await fetch(`/api/links/${id}`, { method: 'DELETE' });
+      if (!res.ok) throw new Error((await res.json()).message);
+      toast({ title: 'Deleted', description: 'Link removed.', variant: 'default' });
+      setLinks(l => l.filter(link => link.id !== id));
+    } catch (err: any) {
+      toast({ title: 'Error Deleting Link', description: err.message, variant: 'destructive' });
     }
   }, [toast]);
-  
-  const filteredAndSortedLinks = useMemo(() => {
-    let linksToProcess = [...allLinks];
 
-    if (!Array.isArray(linksToProcess)) {
-        linksToProcess = [];
+  // Create new folder
+  const createFolder = async () => {
+    try {
+      const res = await fetch('/api/folders', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: newFolderName.trim() }),
+      });
+      if (!res.ok) throw new Error('Could not create folder');
+      const f = await res.json() as Folder;
+      setFolders(fs => [...fs, f]);
+      setActiveFolder(f.id);
+      setNewFolderName('');
+      setShowNewFolder(false);
+    } catch (err: any) {
+      toast({ title: 'Error', description: err.message, variant: 'destructive' });
     }
+  };
 
-    linksToProcess = linksToProcess.filter(link => {
-        if (!link) return false; 
-        const groupMatch = filterGroupId === 'all' || link.groupId === filterGroupId;
-        if (!groupMatch) return false;
+  // Handle domain selection change
+  function handleDomainChange(val: string) {
+    console.log('LinksPage:handleDomainChange — selected id:', val);
+    setSelectedDomain(val);
 
-        const term = searchTerm.toLowerCase();
-        if (!term) return true;
-
-        const titleMatch = link.title?.toLowerCase().includes(term) || false;
-        const shortUrlMatch = link.shortUrl?.toLowerCase().includes(term) || false;
-        const originalUrlMatch = link.originalUrl?.toLowerCase().includes(term) || false;
-        const slugMatch = link.slug?.toLowerCase().includes(term) || false;
-        const tagsMatch = link.tags?.some(tag => tag.toLowerCase().includes(term)) || false;
-        const groupNameMatch = link.groupName?.toLowerCase().includes(term) || false;
-
-        return titleMatch || shortUrlMatch || originalUrlMatch || slugMatch || tagsMatch || groupNameMatch;
-    });
-
-    linksToProcess.sort((a, b) => {
-      const [key, order] = sortBy.split('_');
-      let comparison = 0;
-      
-      const valA = a[key as keyof LinkItem];
-      const valB = b[key as keyof LinkItem];
-
-      if (key === 'createdAt') {
-        comparison = new Date(valB as string).getTime() - new Date(valA as string).getTime();
-      } else if (key === 'clicks') {
-        comparison = (valB as number || 0) - (valA as number || 0);
-      } else if (key === 'title') {
-        comparison = (valA as string || a.slug || '').localeCompare(valB as string || b.slug || '');
-      }
-      
-      return order === 'desc' ? comparison : -comparison;
-    });
-
-    return linksToProcess;
-  }, [allLinks, searchTerm, sortBy, filterGroupId]);
-
-  if (isLoading) {
-    return (
-        <div className="container mx-auto py-2 text-center">
-            <p className="text-muted-foreground text-lg">Loading your links...</p>
-        </div>
-    );
+    const match = domains.find(d => d.id === val);
+    const newDomain = match ? match.name.replace(/^https?:\/\//, '') : undefined;
+    console.log('LinksPage:handleDomainChange — computed domain:', newDomain);
+    setDomain(newDomain);
   }
 
+  // Initial load
+  useEffect(() => {
+    fetchDomains();
+    fetchFolders();
+  }, [fetchDomains, fetchFolders]);
+
+  // Sync context domain whenever selectedDomain or domains list changes
+  useEffect(() => {
+    if (selectedDomain) {
+      const match = domains.find(d => d.id === selectedDomain);
+      const host = match ? match.name.replace(/^https?:\/\//, '') : undefined;
+      setDomain(host);
+      console.log('LinksPage: context.domain set to', host);
+    }
+  }, [selectedDomain, domains, setDomain]);
+
+  // Reload links when domain or folder changes
+  useEffect(() => {
+    if (selectedDomain) fetchLinks();
+  }, [selectedDomain, activeFolder, fetchLinks]);
+
   return (
-    <div className="container mx-auto py-2">
-      <div className="flex flex-col md:flex-row justify-between items-center mb-8 gap-4">
-        <div>
-          <h1 className="text-3xl font-bold tracking-tight text-foreground">My Links</h1>
-          <p className="text-muted-foreground">Manage all your shortened links in one place.</p>
-        </div>
-        <Button asChild>
-          <Link href="/dashboard"> 
-            <PlusCircle className="mr-2 h-4 w-4" /> Create New Link
-          </Link>
-        </Button>
+    <div className="p-6 space-y-6">
+      {/* Domain selector + refresh */}
+      <div className="flex items-center space-x-0">
+        <Select
+          value={selectedDomain}
+          onValueChange={handleDomainChange}
+        >
+          <SelectTrigger className="inline-flex w-auto h-10 items-center text-sm border border-muted rounded-l-lg px-3">
+            <SelectValue placeholder="Select domain…" />
+          </SelectTrigger>
+          <SelectContent className="w-auto min-w-[8rem]">
+            {domains.map(d => (
+              <SelectItem key={d.id} value={d.id}>{d.name}</SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+        <button onClick={fetchLinks} className="h-10 w-10 flex items-center justify-center border border-l-0 border-muted rounded-r-lg hover:bg-muted/50">
+          <RefreshCw size={18} />
+        </button>
       </div>
 
-      <div className="mb-6 p-4 border rounded-lg bg-card shadow">
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 items-end">
-          <div className="md:col-span-2 lg:col-span-1">
-            <label htmlFor="search-links" className="block text-sm font-medium text-muted-foreground mb-1">
-              <Search className="inline h-4 w-4 mr-1" />
-              Search Links
-            </label>
-            <Input
-              id="search-links"
-              type="text"
-              placeholder="Search by title, URL, slug, tag, group..."
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              className="w-full"
-            />
-          </div>
-          <div>
-            <label htmlFor="sort-by" className="block text-sm font-medium text-muted-foreground mb-1">
-                <ArrowDownUp className="inline h-4 w-4 mr-1" />
-                Sort By
-            </label>
-            <Select value={sortBy} onValueChange={setSortBy}>
-              <SelectTrigger id="sort-by" className="w-full">
-                <SelectValue placeholder="Sort by..." />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="createdAt_desc">Date Created (Newest)</SelectItem>
-                <SelectItem value="createdAt_asc">Date Created (Oldest)</SelectItem>
-                <SelectItem value="clicks_desc">Clicks (Most)</SelectItem>
-                <SelectItem value="clicks_asc">Clicks (Least)</SelectItem>
-                <SelectItem value="title_asc">Title (A-Z)</SelectItem>
-                <SelectItem value="title_desc">Title (Z-A)</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
-           <div>
-            <label htmlFor="filter-group" className="block text-sm font-medium text-muted-foreground mb-1">
-                <FolderKanban className="inline h-4 w-4 mr-1" />
-                Filter by Group
-            </label>
-            <Select value={filterGroupId} onValueChange={setFilterGroupId}>
-              <SelectTrigger id="filter-group" className="w-full">
-                <SelectValue placeholder="Filter by group..." />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All Groups</SelectItem>
-                {linkGroups.map(group => (
-                    <SelectItem key={group.id} value={group.id}>{group.name}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-           </div>
-        </div>
+      {/* Folder tabs */}
+      <div className="flex border-b">
+        <button
+          className={`px-4 py-2 -mb-px ${activeFolder === null ? 'border-b-2 border-primary font-semibold' : ''}`}
+          onClick={() => setActiveFolder(null)}
+        >
+          All links
+        </button>
+        {folders.map(f => (
+          <button
+            key={f.id}
+            className={`px-4 py-2 -mb-px ${activeFolder === f.id ? 'border-b-2 border-primary font-semibold' : ''}`}
+            onClick={() => setActiveFolder(f.id)}
+          >
+            📁 {f.name}
+          </button>
+        ))}
+        <button
+          className="ml-auto px-4 py-2 text-primary"
+          onClick={() => setShowNewFolder(true)}
+        >
+          + New Folder
+        </button>
       </div>
 
-      {filteredAndSortedLinks.length > 0 ? (
-        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
-          {filteredAndSortedLinks.map((link) => (
-            <LinkCard key={link.id} link={link} onDelete={() => handleLinkDelete(link.id)} />
-          ))}
-        </div>
-      ) : (
-        <div className="text-center py-10">
-          <Search className="mx-auto h-12 w-12 text-muted-foreground mb-4" />
-          <h3 className="text-xl font-semibold text-foreground">
-            {allLinks.length === 0 && !searchTerm && filterGroupId === 'all' ? "No Links Created Yet" : "No Links Found"}
-          </h3>
-          <p className="text-muted-foreground">
-            {allLinks.length === 0 && !searchTerm && filterGroupId === 'all'
-              ? 'Create your first link from the dashboard or by clicking "Create New Link" above.'
-              : `Your search/filter criteria did not match any links. Try a different term or filter.`
-            }
-          </p>
-        </div>
-      )}
+      {/* Links table */}
+      <Card className="border rounded-lg overflow-x-auto">
+        <CardHeader className="pb-0"><CardTitle>Links</CardTitle></CardHeader>
+        <CardContent className="pt-2 px-0">
+
+          {/* Header actions */}
+          <div className="flex justify-between px-4 mb-4">
+            <CreateLinkBar domainId={selectedDomain} />
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <button className="p-2"><Filter size={18} /></button>
+              </TooltipTrigger>
+              <TooltipContent>Filter</TooltipContent>
+            </Tooltip>
+          </div>
+
+          <div className="overflow-x-auto">
+            <Table className="min-w-[900px]">
+              <TableHeader>
+                <TableRow>
+                  <TableHead className="w-10"><Checkbox /></TableHead>
+                  <TableHead className="w-[120px]">By</TableHead>
+                  <TableHead className="w-[200px]">Short link</TableHead>
+                  <TableHead>Original link</TableHead>
+                  <TableHead className="text-center w-[80px]">Clicks</TableHead>
+                  <TableHead className="text-center w-[100px]">Conversions</TableHead>
+                  <TableHead className="w-[150px]">Tags</TableHead>
+                  <TableHead className="text-center w-[120px]">Actions</TableHead>
+                </TableRow>
+              </TableHeader>
+
+              <TableBody>
+                {loading ? (
+                  <TableRow>
+                    <TableCell colSpan={8} className="text-center py-8">Loading…</TableCell>
+                  </TableRow>
+                ) : links.length === 0 ? (
+                  <TableRow>
+                    <TableCell colSpan={8} className="text-center py-8">No links in this domain/folder.</TableCell>
+                  </TableRow>
+                ) : (
+                  links.map(link => {
+                    const main = link.tags[0] || '';
+                    const extra = link.tags.length > 1 ? link.tags.length - 1 : 0;
+                    return (
+                      <TableRow key={link.id} className="hover:bg-muted">
+                        <TableCell><Checkbox /></TableCell>
+                        <TableCell>
+                          <div className="flex items-center space-x-2">
+                            <Avatar><AvatarFallback>U</AvatarFallback></Avatar>
+                            <span className="text-sm text-muted-foreground">{new Date(link.createdAt).toLocaleDateString()}</span>
+                          </div>
+                        </TableCell>
+                        <TableCell>
+                          <div className="flex items-center space-x-1">
+                            <ExternalLink className="h-4 w-4 text-primary" />
+                            <Link href={link.shortUrl} className="underline text-primary truncate max-w-[150px]">
+                              {link.shortUrl}
+                            </Link>
+                            <Copy className="h-4 w-4 text-muted-foreground cursor-pointer hover:text-primary" onClick={() => navigator.clipboard.writeText(link.shortUrl)} />
+                          </div>
+                        </TableCell>
+                        <TableCell>
+                          <div className="flex flex-col">
+                            <Link href={link.originalUrl} className="underline hover:text-primary truncate">{link.title || link.originalUrl}</Link>
+                            <span className="text-sm text-muted-foreground truncate">{link.originalUrl}</span>
+                          </div>
+                        </TableCell>
+                        <TableCell className="text-center">{link.clickCount}</TableCell>
+                        <TableCell className="text-center">{link.conversionCount}</TableCell>
+                        <TableCell>
+                          {main ? (
+                            <Dialog>
+                              <DialogTrigger asChild>
+                                <div className="inline-flex items-center space-x-1 px-2 py-1 border rounded-full cursor-pointer">
+                                  <Tag className="h-4 w-4 text-muted-foreground" />
+                                  <span className="truncate flex-1">{main}</span>
+                                  {extra > 0 && <span className="text-sm font-medium">+{extra}</span>}
+                                </div>
+                              </DialogTrigger>
+                              <DialogContent>
+                                <DialogHeader><DialogTitle>All Tags</DialogTitle></DialogHeader>
+                                <div className="mt-4 flex flex-wrap gap-2">{link.tags.map(t => <Badge key={t} variant="outline">{t}</Badge>)}</div>
+                                <DialogFooter><Button variant="outline">Close</Button></DialogFooter>
+                              </DialogContent>
+                            </Dialog>
+                          ) : <span className="text-muted-foreground">—</span>}
+                        </TableCell>
+                        <TableCell className="flex justify-center space-x-2">
+                          <Tooltip>
+                            <TooltipTrigger asChild>
+                              <Link href={`/links/${link.id}/basic`}><Pencil className="h-4 w-4 text-muted-foreground hover:text-primary" /></Link>
+                            </TooltipTrigger>
+                            <TooltipContent>Edit</TooltipContent>
+                          </Tooltip>
+                          <Tooltip>
+                            <TooltipTrigger asChild>
+                              <Link href={`/analytics/${link.id}`}><BarChart2 className="h-4 w-4 text-muted-foreground hover:text-primary" /></Link>
+                            </TooltipTrigger>
+                            <TooltipContent>Analytics</TooltipContent>
+                          </Tooltip>
+                          <Tooltip>
+                            <TooltipTrigger onClick={() => handleLinkDelete(link.id)}><Trash2 className="h-4 w-4 text-muted-foreground hover:text-destructive cursor-pointer" /></TooltipTrigger>
+                            <TooltipContent>Delete</TooltipContent>
+                          </Tooltip>
+                        </TableCell>
+                      </TableRow>
+                    );
+                  })
+                )}
+              </TableBody>
+            </Table>
+          </div>
+
+          {/* Pagination stub */}
+          <div className="flex justify-end px-4 py-4">
+            <Button variant="ghost" size="sm">← Prev</Button>
+            <span className="px-4 text-sm text-muted-foreground">{links.length > 0 ? `1–${links.length} of ${links.length}` : 'No links'}</span>
+            <Button variant="ghost" size="sm">Next →</Button>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* New Folder Modal */}
+      <Dialog open={showNewFolder} onOpenChange={setShowNewFolder}>
+        <DialogContent>
+          <DialogHeader><DialogTitle>Folder creation</DialogTitle></DialogHeader>
+          <Input placeholder="Folder name" value={newFolderName} onChange={e => setNewFolderName(e.target.value)} />
+          <DialogFooter className="space-x-2">
+            <Button variant="outline" onClick={() => setShowNewFolder(false)}>Cancel</Button>
+            <Button onClick={createFolder}>Create</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

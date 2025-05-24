@@ -32,6 +32,7 @@ import {
   FileText,
   Palette,
   FolderKanban,
+  SubscriptIcon
 } from 'lucide-react';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { useSession } from 'next-auth/react'; // Import useSession
@@ -60,6 +61,7 @@ export default function AppSidebar({ inSheet = false }: AppSidebarProps) {
     { href: '/settings/retargeting', label: 'Retargeting Pixels', icon: Target },
     { href: '/settings/apikeys', label: 'API Keys', icon: KeyRound },
     { href: '/settings/appearance', label: 'Appearance', icon: Palette },
+    { href: '/settings/subscription', label: 'Subscription', icon: SubscriptIcon },
   ];
 
   const advancedFeatures = [

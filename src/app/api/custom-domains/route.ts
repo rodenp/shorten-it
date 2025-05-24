@@ -1,7 +1,7 @@
 
 import { getServerSession } from "next-auth/next";
 import { authOptions } from "@/lib/auth";
-import { CustomDomainModel } from "@/models/CustomDomain";
+import { DomainModel } from "@/models/Domains";
 import { NextResponse } from "next/server";
 
 // GET all custom domains for the logged-in user
@@ -12,7 +12,7 @@ export async function GET(request: Request) {
       return NextResponse.json({ message: "Unauthorized" }, { status: 401 });
     }
 
-    const domains = await CustomDomainModel.findByUserId(session.user.id);
+    const domains = await DomainModel.findByUserId(session.user.id, 'custom');
     return NextResponse.json(domains);
 
   } catch (error) {
@@ -30,11 +30,12 @@ export async function POST(request: Request) {
     }
 
     const body = await request.json();
-    const { domainName } = body;
+    const { domainName, type } = body;
 
     if (!domainName || typeof domainName !== 'string' || domainName.trim().length === 0) {
       return NextResponse.json({ message: "Domain name is required" }, { status: 400 });
     }
+
 
     // Basic domain name validation (can be enhanced)
     // This regex is a simple check, not fully RFC compliant but covers common cases.
@@ -44,7 +45,7 @@ export async function POST(request: Request) {
     }
 
     try {
-        const newDomain = await CustomDomainModel.create(session.user.id, domainName.trim());
+        const newDomain = await DomainModel.create(session.user.id, domainName.trim(), 'custom');
         return NextResponse.json(newDomain, { status: 201 });
     } catch (dbError: any) {
         // Check for unique constraint violation (e.g., PostgreSQL error code 23505)

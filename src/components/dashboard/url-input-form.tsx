@@ -35,7 +35,7 @@ interface CreateLinkPayload {
   title?: string;
   tags?: string[];
   isCloaked?: boolean;
-  customDomainId?: string;
+  domainId?: string;
   groupId?: string;
   deepLinkConfig?: LinkItem['deepLinkConfig'];
   abTestConfig?: LinkItem['abTestConfig'];
@@ -61,7 +61,7 @@ const urlInputFormSchema = z.object({
   title: z.string().optional(),
   tags: z.string().optional(),
   groupId: z.string().optional(),
-  customDomainId: z.string().optional(),
+  domainId: z.string().optional(),
   enableRotation: z.boolean().default(false).optional(),
   enableCloaking: z.boolean().default(false).optional(),
   enableDeepLinking: z.boolean().default(false).optional(),
@@ -126,7 +126,7 @@ const defaultValues: Partial<UrlInputFormValues> = {
   title: '',
   tags: '',
   groupId: 'none',
-  customDomainId: 'default',
+  domainId: 'default',
 };
 
 interface UrlInputFormProps {
@@ -151,7 +151,7 @@ export function UrlInputForm({ onLinkAdded }: UrlInputFormProps) {
     const fetchData = async () => {
       try {
         const [domainsRes, groupsRes, pixelsRes] = await Promise.all([
-          fetch('/api/custom-domains'),
+          fetch('/api/domains'),
           fetch('/api/link-groups'),
           fetch('/api/retargeting-pixels')
         ]);
@@ -199,7 +199,7 @@ export function UrlInputForm({ onLinkAdded }: UrlInputFormProps) {
       slug: data.customAlias || undefined,
       tags: data.tags ? data.tags.split(',').map(t => t.trim()).filter(Boolean) : undefined,
       isCloaked: data.enableCloaking,
-      customDomainId: data.customDomainId === 'default' ? undefined : data.customDomainId,
+      domainId: data.domainId === 'default' ? undefined : data.domainId,
       groupId: data.groupId === 'none' ? undefined : data.groupId,
       retargetingPixelIds: data.enableRetargeting && data.selectedRetargetingPixelId !== 'none' ? [data.selectedRetargetingPixelId as string] : undefined,
     };
@@ -401,7 +401,7 @@ export function UrlInputForm({ onLinkAdded }: UrlInputFormProps) {
                   />
                   <FormField
                     control={form.control}
-                    name="customDomainId"
+                    name="domainId"
                     render={({ field }) => (
                       <FormItem>
                         <FormLabel className="flex items-center"><Globe className="mr-2 h-4 w-4" />Custom Domain (Optional)</FormLabel>
