@@ -58,18 +58,48 @@ export function SubscriptionSettings() {
   }, [toast]);
 
   const handleChangePlan = async (planId: string) => {
-    setActionLoading(planId);
+    setActionLoading(planId); // Use planId to indicate which plan change is loading
     try {
       const res = await fetch('/api/subscription', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ planId }),
       });
-      if (!res.ok) throw new Error('Failed to update plan');
-      setSub(await res.json());
-      toast({ title: 'Subscription updated!' });
+      const responseData = await res.json();
+      if (!res.ok) {
+        throw new Error(responseData.message || 'Failed to update plan');
+      }
+      setSub(responseData); // API should return the updated subscription object
+      toast({ title: 'Subscription Updated!', description: `You are now on the ${plans.find(p => p.id === planId)?.name || 'selected'} plan.` });
     } catch (err: any) {
-      toast({ title: 'Error', description: err.message, variant: 'destructive' });
+      toast({ title: 'Error Updating Subscription', description: err.message, variant: 'destructive' });
+    } finally {
+      setActionLoading(null);
+    }
+  };
+
+  const handleCancelSubscription = async () => {
+    setActionLoading('cancel'); // Use a specific key for cancel action
+    try {
+      const res = await fetch('/api/subscription', {
+        method: 'DELETE',
+      });
+      const responseData = await res.json();
+      if (!res.ok) {
+        throw new Error(responseData.message || 'Failed to cancel subscription');
+      }
+      // The API returns the subscription object which might now be 'free' or reflect 'cancel_at_period_end'
+      // For UI, we expect 'nextBillingDate' to be null or planId to be 'free' if fully cancelled,
+      // or nextBillingDate to be the period end if set to cancel at period end.
+      setSub(responseData); 
+      toast({ 
+        title: 'Subscription Cancellation Initiated', 
+        description: responseData.planId === 'free' 
+          ? 'Your subscription has been cancelled and you are now on the Free plan.'
+          : `Your subscription will be cancelled at the end of the current billing period (${new Date(responseData.nextBillingDate).toLocaleDateString()}). You will be moved to the Free plan then.`
+      });
+    } catch (err: any) {
+      toast({ title: 'Error Cancelling Subscription', description: err.message, variant: 'destructive' });
     } finally {
       setActionLoading(null);
     }
@@ -136,8 +166,36 @@ export function SubscriptionSettings() {
                   Usage:&nbsp;
                   <strong>{sub.usage} / {sub.limit === 0 ? '∞' : sub.limit}</strong>
                 </p>
+                {sub.planId !== 'free' && sub.nextBillingDate && new Date(sub.nextBillingDate) > new Date() && (
+                  <p className="text-sm text-muted-foreground">
+                    Your subscription will renew on {new Date(sub.nextBillingDate).toLocaleDateString()}.
+                  </p>
+                )}
+                {/* Display this if subscription is set to cancel at period end (nextBillingDate might be past or planId is still active but will change) */}
+                {/* This part requires knowing if cancel_at_period_end is true from Stripe, which 'sub' object might not directly have. */}
+                {/* For now, if nextBillingDate is null OR in the past, but plan is not 'free', assume it's active until period end without auto-renew */}
+                {sub.planId !== 'free' && (!sub.nextBillingDate || new Date(sub.nextBillingDate) <= new Date()) && (
+                   <p className="text-sm text-orange-600 dark:text-orange-400">
+                    Your subscription is active and will not auto-renew. Access continues until the end of the current billing period.
+                  </p>
+                )}
               </div>
-              <Button disabled>Manage Billing</Button>
+              <div className="flex flex-col space-y-2 items-start md:items-end">
+                <Button disabled>Manage Billing (Stripe Portal)</Button>
+                <Button variant="outline" size="sm" asChild>
+                  <a href="/settings/invoices">View Billing History</a>
+                </Button>
+                {sub.planId !== 'free' && (
+                  <Button 
+                    variant="destructive" 
+                    size="sm"
+                    onClick={handleCancelSubscription}
+                    disabled={actionLoading === 'cancel'}
+                  >
+                    {actionLoading === 'cancel' ? 'Cancelling…' : 'Cancel Subscription'}
+                  </Button>
+                )}
+              </div>
             </div>
           )}
         </CardContent>
@@ -205,10 +263,14 @@ export function SubscriptionSettings() {
                       onClick={() => handleChangePlan(plan.id)}
                     >
                       {plan.id === sub?.planId
-                        ? 'Current'
+                        ? 'Current Plan'
                         : actionLoading === plan.id
-                        ? 'Updating…'
-                        : 'Select'}
+                        ? 'Processing…'
+                        : sub && plans.find(p => p.id === plan.id)!.price > plans.find(p => p.id === sub.planId)!.price
+                        ? 'Upgrade'
+                        : sub && plans.find(p => p.id === plan.id)!.price < plans.find(p => p.id === sub.planId)!.price
+                        ? 'Downgrade'
+                        : 'Switch Plan'}
                     </Button>
                   </TableCell>
                 ))}

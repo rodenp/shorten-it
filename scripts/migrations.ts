@@ -82,6 +82,55 @@ export async function runMigrations() {
         `);
         await dbClient.query('CREATE INDEX IF NOT EXISTS "link_domainId_idx" ON links("domainId");');
     },
+    '1.0.2': async () => { // Assuming '1.0.2' is the next version after '1.0.1' and <= APP_VERSION
+      // Add stripeCustomerId and stripeSubscriptionId to subscriptions table
+      await dbClient.query(`
+        ALTER TABLE subscriptions
+        ADD COLUMN IF NOT EXISTS "stripeCustomerId" TEXT,
+        ADD COLUMN IF NOT EXISTS "stripeSubscriptionId" TEXT;
+      `);
+      console.log('Altered subscriptions table.');
+
+      // Create invoices table
+      await dbClient.query(`
+        CREATE TABLE IF NOT EXISTS invoices (
+            id SERIAL PRIMARY KEY,
+            "userId" TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+            "stripeInvoiceId" TEXT UNIQUE NOT NULL,
+            "stripeSubscriptionId" TEXT,
+            status VARCHAR(50) NOT NULL,
+            "amountDue" INTEGER NOT NULL,
+            "amountPaid" INTEGER NOT NULL,
+            "amountRemaining" INTEGER NOT NULL,
+            currency VARCHAR(10) NOT NULL,
+            "hostedInvoiceUrl" TEXT,
+            "invoicePdfUrl" TEXT,
+            "createdDate" TIMESTAMPTZ NOT NULL,
+            "dueDate" TIMESTAMPTZ,
+            "periodStart" TIMESTAMPTZ NOT NULL,
+            "periodEnd" TIMESTAMPTZ NOT NULL,
+            description TEXT
+        );
+      `);
+      await dbClient.query(`CREATE INDEX IF NOT EXISTS idx_invoices_userId ON invoices("userId");`);
+      await dbClient.query(`CREATE INDEX IF NOT EXISTS idx_invoices_stripeSubscriptionId ON invoices("stripeSubscriptionId");`);
+      console.log('Created invoices table and its indexes.');
+
+      // Create payments table
+      await dbClient.query(`
+        CREATE TABLE IF NOT EXISTS payments (
+            id SERIAL PRIMARY KEY,
+            "invoiceId" INTEGER NOT NULL REFERENCES invoices(id) ON DELETE CASCADE,
+            "stripeChargeId" TEXT UNIQUE NOT NULL,
+            amount INTEGER NOT NULL,
+            currency VARCHAR(10) NOT NULL,
+            status VARCHAR(50) NOT NULL,
+            "createdDate" TIMESTAMPTZ NOT NULL
+        );
+      `);
+      await dbClient.query(`CREATE INDEX IF NOT EXISTS idx_payments_invoiceId ON payments("invoiceId");`);
+      console.log('Created payments table and its index.');
+    }
   };
 
   const migrationVersions = Object.keys(migrations).sort(); // ensure chronological order
