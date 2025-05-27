@@ -123,20 +123,25 @@ async function createBasicUser(email: string): Promise<UserProfile> {
     // 3. Send invite email
     const transporter = nodemailer.createTransport({
       host: process.env.SMTP_HOST,
-      port: Number(process.env.SMTP_PORT) || 587,
-      secure: false,
+      port: +process.env.SMTP_PORT!,
+      secure: !!process.env.SMTP_SECURE, // true for 465, false for other ports
       auth: {
         user: process.env.SMTP_USER,
-        pass: process.env.SMTP_PASS
-      }
+        pass: process.env.SMTP_PASS,
+      },
     });
 
     await transporter.sendMail({
-      from: process.env.SMTP_FROM || 'no-reply@example.com',
+      from: `"My App Team" <no-reply@myapp.com>`,  // <— this must be present
       to: email,
-      subject: `You're invited to join the team`,
-      text: `You've been invited to join the team.\n\nLogin email: ${email}\nTemporary password: ${plainPassword}\n\nPlease log in and change your password.`,
-      html: `<p>You've been invited to join the team.</p><p><strong>Email:</strong> ${email}</p><p><strong>Temporary Password:</strong> ${plainPassword}</p><p>Log in and change your password after signing in.</p>`
+      subject: 'You’ve been invited to join My App',
+      text: `Hello! You can accept your invite here: ${inviteLink}`,
+      html: `<p>Hello!</p><p>Accept your invite <a href="${inviteLink}">here</a>.</p>`,
+      // if your SMTP server requires a separate envelope, you can add:
+      envelope: {
+        from: '"My App Team" <no-reply@myapp.com>',
+        to: email,
+      },
     });
 
     return {
