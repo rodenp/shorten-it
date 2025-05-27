@@ -1,29 +1,54 @@
 // src/app/api/links/route.ts
-import { NextResponse } from 'next/server';
+// src/app/api/links/route.ts
+// src/app/api/links/route.ts
+import { NextResponse, NextRequest } from 'next/server';
 import { createLink, getLinksByUserId } from '@/lib/linkService';
 import { getUserIdFromRequest } from '@/lib/auth-utils';
 import { debugLog } from '@/lib/logging';
-import { LinkItem } from '@/types';
+import { LinkItem, CreateLinkData } from '@/types';
+import { z } from 'zod'; // Removed ZodError as handleApiError will manage it
+import { handleApiError, successResponse } from '@/lib/apiUtils';
 
-export async function GET(request: Request) {
+// Define Zod schema for link creation
+const createLinkSchema = z.object({
+  originalUrl: z.string().url({ message: "Invalid URL format for originalUrl" }),
+  slug: z.string().optional(), // Add more specific regex if needed, e.g., .regex(/^[a-zA-Z0-9_-]+$/)
+  domainId: z.string().optional(), // Assuming UUID or specific format
+  folderId: z.string().optional(), // Assuming format if applicable (e.g., string or number from DB)
+  groupId: z.string().optional(),  // Assuming format
+  title: z.string().max(255).optional(),
+  isCloaked: z.boolean().optional(),
+  // Define 'targets' more strictly if its structure is known, e.g., for A/B testing or geo-targeting
+  // For now, allowing any array of objects for targets, but this should be refined.
+  targets: z.array(z.object({
+    url: z.string().url({ message: "Invalid URL format for target URL" }),
+    // Potentially other fields per target: weight, country, etc.
+  })).optional(), // Make targets itself optional, or .min(1) if at least one target is required when originalUrl is not primary
+  // Add other fields from CreateLinkData as needed
+  // e.g., deepLinkConfig: z.object(...).optional(),
+  // abTestConfig: z.object(...).optional(),
+  // rotation_start: z.string().datetime().optional(),
+  // rotation_end: z.string().datetime().optional(),
+  // click_limit: z.number().int().positive().optional(),
+});
+
+
+export async function GET(request: NextRequest) {
   try {
     const userId = await getUserIdFromRequest(request);
     if (!userId) {
-      return NextResponse.json({ message: 'Unauthorized' }, { status: 401 });
+      // Use handleApiError for consistency, though this is a direct return
+      return handleApiError({ message: 'Unauthorized' }, 'Unauthorized', 401);
     }
 
-    // Support optional folderId query parameter
     const url = new URL(request.url);
     const folderId = url.searchParams.get('folderId') || undefined;
 
     const links: LinkItem[] = await getLinksByUserId(userId, folderId);
-    return NextResponse.json(links);
+    return successResponse(links);
   } catch (error: any) {
-    console.error('Error fetching links:', error);
-    return NextResponse.json(
-      { message: error.message || 'Error fetching links' },
-      { status: 500 }
-    );
+    // console.error('Error fetching links:', error); // handleApiError will log
+    return handleApiError(error, 'Error fetching links');
   }
 }
 
@@ -31,69 +56,34 @@ export async function POST(request: Request) {
   try {
     const userId = await getUserIdFromRequest(request);
     if (!userId) {
-      return NextResponse.json({ message: 'Unauthorized' }, { status: 401 });
+      return handleApiError({ message: 'Unauthorized' }, 'Unauthorized', 401);
     }
 
-    const linkData = await request.json(); // Expects CreateLinkData shape
+    const body = await request.json();
+    
+    // Validate with Zod
+    const validationResult = createLinkSchema.safeParse(body);
+    if (!validationResult.success) {
+      // Pass ZodError directly to handleApiError
+      return handleApiError(validationResult.error, 'Invalid link data.');
+    }
+    
+    const linkData: CreateLinkData = validationResult.data as CreateLinkData;
 
     // Debug logging
-    debugLog('Received linkData:', linkData);
-    if (linkData.targets && linkData.targets.length) {
-      debugLog('First target URL:', linkData.targets[0]?.url);
+    debugLog('Received validated linkData:', linkData);
+    if (linkData.targets && linkData.targets.length > 0 && linkData.targets[0]) {
+        debugLog('First target URL:', linkData.targets[0].url);
+    } else if (linkData.originalUrl) {
+        debugLog('Original URL:', linkData.originalUrl);
     }
 
-    // Validate required fields
-    if (!linkData.originalUrl ) {
-      return NextResponse.json(
-        { message: 'Missing required fields: originalUrl' },
-        { status: 400 }
-      );
-    }
 
-    // Create the link (includes any folderId property)
+    // Create the link
     const newLink = await createLink({ ...linkData, userId });
-    return NextResponse.json(newLink, { status: 201 });
+    return successResponse(newLink, 201);
   } catch (error: any) {
-    console.error('Error creating link:', error);
-    const status = /taken|conflict/i.test(error.message) ? 409 : 500;
-    return NextResponse.json(
-      { message: error.message || 'Error creating link' },
-      { status }
-    );
-  }
-}
-export async function PATCH(request: Request) {
-  try {
-    const userId = await getUserIdFromRequest(request);
-    if (!userId) {
-      return NextResponse.json({ message: 'Unauthorized' }, { status: 401 });
-    }
-
-    const linkData = await request.json(); // Expects CreateLinkData shape
-
-    // Debug logging
-    debugLog('Received linkData:', linkData);
-    if (linkData.targets && linkData.targets.length) {
-      debugLog('First target URL:', linkData.targets[0]?.url);
-    }
-
-    // Validate required fields
-    if (!linkData.originalUrl || !Array.isArray(linkData.targets) || linkData.targets.length === 0) {
-      return NextResponse.json(
-        { message: 'Missing required fields: originalUrl and targets' },
-        { status: 400 }
-      );
-    }
-
-    // Create the link (includes any folderId property)
-    const newLink = await createLink({ ...linkData, userId });
-    return NextResponse.json(newLink, { status: 201 });
-  } catch (error: any) {
-    console.error('Error creating link:', error);
-    const status = /taken|conflict/i.test(error.message) ? 409 : 500;
-    return NextResponse.json(
-      { message: error.message || 'Error creating link' },
-      { status }
-    );
+    // console.error('Error creating link:', error); // handleApiError will log
+    return handleApiError(error, 'Error creating link');
   }
 }
