@@ -31,6 +31,21 @@ export async function runMigrations() {
     '1.0.1': async () => {
 
         await dbClient.query(`
+            DO $$
+            BEGIN
+              IF NOT EXISTS (
+                SELECT 1
+                FROM information_schema.columns
+                WHERE table_name = 'links'
+                  AND column_name = 'domainId'
+              ) THEN
+                ALTER TABLE links ADD COLUMN "domainId" TEXT;
+              END IF;
+            END
+            $$;
+        `);
+
+        await dbClient.query(`
             CREATE TABLE IF NOT EXISTS domains (
                 id TEXT PRIMARY KEY ,
                 "userId" TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE, 
