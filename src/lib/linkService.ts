@@ -57,7 +57,7 @@ function formatLinkItem(row: any, pixels?: RetargetingPixel[]): LinkItem {
     title: row.title,
     tags: row.tags || [],
     isCloaked: row.isCloaked,
-    customDomain: row.customDomainName, 
+    domain: row.domainName, 
     domainId: row.domainId, 
     groupId: row.groupId,
     groupName: row.groupName, 
@@ -84,7 +84,7 @@ export async function getLinkById(id: string, userId: string): Promise<LinkItem 
   try {
     const query = `
         SELECT l.*, l.last_used_target_index, 
-               cd."domainName" as "customDomainName",
+               cd."domainName" as "domainName",
                lg.name as "groupName"
         FROM links l
         LEFT JOIN domains cd ON l."domainId" = cd.id
@@ -116,7 +116,7 @@ export async function getLinkBySlug(slug: string, userId: string): Promise<LinkI
   try {
     const query = `
         SELECT l.*, l.last_used_target_index, 
-               cd."domainName" as "customDomainName",
+               cd."domainName" as "domainName",
                lg.name as "groupName"
         FROM links l
         LEFT JOIN domains cd ON l."domainId" = cd.id
@@ -155,7 +155,7 @@ export async function getLinkBySlugAndDomain(slug: string, domain: string): Prom
     if (domain === defaultShortenerDomain || isLocalhostDomainInput) {
       query = `
         SELECT l.*, l.last_used_target_index, 
-               NULL as "customDomainName" 
+               NULL as "domainName" 
         FROM links l
         WHERE l.slug = $1 AND l."domainId" IS NULL; 
       `;
@@ -166,7 +166,7 @@ export async function getLinkBySlugAndDomain(slug: string, domain: string): Prom
     } else {
       query = `
         SELECT l.*, l.last_used_target_index, 
-               cd."domainName" as "customDomainName"
+               cd."domainName" as "domainName"
         FROM links l
         JOIN domains cd ON l."domainId" = cd.id
         WHERE l.slug = $1 AND cd."domainName" = $2 AND cd.verified = TRUE; 
@@ -184,7 +184,7 @@ export async function getLinkBySlugAndDomain(slug: string, domain: string): Prom
     let link = formatLinkItem(linkRow, []); 
 
     let protocol = 'https://';
-    const effectiveDomain = link.customDomain || defaultShortenerDomain;
+    const effectiveDomain = link.domain || defaultShortenerDomain;
     if (effectiveDomain.startsWith('localhost:')) {
         protocol = 'http://';
     }
@@ -206,7 +206,7 @@ export async function getLinksByUserId(
   if (DB_TYPE !== 'postgres' || !pool) return [];
   let sql = `
     SELECT l.*, l.last_used_target_index,
-           cd."domainName" AS customDomainName,
+           cd."domainName" AS domainName,
            lg.name AS groupName
       FROM links l
  LEFT JOIN domains cd ON l."domainId" = cd.id
@@ -296,13 +296,13 @@ export async function createLink(data: CreateLinkData): Promise<LinkItem> {
     }
 
     let actualShortUrlBase: string;
-    let customDomainName; // This will be used for the returned LinkItem
+    let domainName; // This will be used for the returned LinkItem
 
     if (data.domainId) {
         const domainRes = await client.query('SELECT "domainName" FROM domains WHERE id = $1 AND "userId" = $2', [data.domainId, data.userId]);
         if (domainRes.rows.length > 0) {
-            customDomainName = domainRes.rows[0].domainName;
-            actualShortUrlBase = customDomainName;
+            domainName = domainRes.rows[0].domainName;
+            actualShortUrlBase = domainName;
         } else {
             throw new Error('Custom domain not found or not authorized.');
         }
@@ -321,7 +321,7 @@ export async function createLink(data: CreateLinkData): Promise<LinkItem> {
         (id, "userId", "originalUrl", "shortUrl", slug, title, tags, "isCloaked",
          "domainId", "groupId", "deepLinkConfig", "abTestConfig",
          targets, "folderId", "clickCount", last_used_target_index, "createdAt", "updatedAt", 
-         "rotationStart", "rotationEnd", "clickLimit")
+         "rotation_start", "rotation_end", "click_limit")
       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,0,NULL,$15,$15,$16,$17,$18)
       RETURNING *, last_used_target_index;
     `;
@@ -341,7 +341,7 @@ export async function createLink(data: CreateLinkData): Promise<LinkItem> {
 
     const res = await client.query(linkQuery, linkParams);
     let newLinkRow = res.rows[0];
-    newLinkRow.customDomainName = customDomainName; 
+    newLinkRow.domainName = domainName; 
     if (newLinkRow.groupId) {
         const groupRes = await client.query('SELECT name FROM link_groups WHERE id = $1 AND "userId" = $2', [newLinkRow.groupId, data.userId]);
         if (groupRes.rows.length > 0) newLinkRow.groupName = groupRes.rows[0].name;
@@ -466,7 +466,7 @@ export async function updateLink(
 
     // 6) Re‐fetch and return the updated row
     const refreshed = await client.query(
-      `SELECT l.*, cd."domainName" AS "customDomainName", lg.name AS "groupName"
+      `SELECT l.*, cd."domainName" AS "domainName", lg.name AS "groupName"
          FROM links l
          LEFT JOIN domains cd ON l."domainId" = cd.id
          LEFT JOIN link_groups lg ON l."groupId" = lg.id AND lg."userId" = l."userId"

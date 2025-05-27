@@ -24,35 +24,19 @@ import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from '@
 import { useToast } from '@/hooks/use-toast';
 import { CreateLinkBar } from '@/components/dashboard/create-linker-bar';
 import { useLinkParams } from '@/context/LinkParamsContext';
+import { LinkItem, Folder, DomainOption } from '@/types';
 
-interface LinkItem {
-  id: string;
-  createdAt: string;
-  shortUrl: string;
-  originalUrl: string;
-  title?: string;
-  clickCount: number;
-  conversionCount: number;
-  tags: string[];
-  domainId: string;
-  folderId?: string;
-  rotationStart?: string;
-  rotationEnd?: string;
-  clickLimit?: number;
-}
-
-interface Folder {
-  id: string;
-  name: string;
-}
-
-interface DomainOption {
-  id: string;
-  name: string;
-  type: 'custom' | 'sub';
-}
 
 export default function LinksPage() {
+
+  const {
+    domain,
+    domainId,
+    setDomain,
+    setDomainId,
+    clear
+  } = useLinkParams();
+
   const { toast } = useToast();
 
   // Domains dropdown
@@ -71,9 +55,6 @@ export default function LinksPage() {
   // New folder modal
   const [showNewFolder, setShowNewFolder] = useState(false);
   const [newFolderName, setNewFolderName] = useState('');
-
-  // Context for selected domain host
-  const { domain, setDomain } = useLinkParams();
 
   // Fetch custom + sub domains
   const fetchDomains = useCallback(async () => {
@@ -171,7 +152,9 @@ export default function LinksPage() {
     const match = domains.find(d => d.id === val);
     const newDomain = match ? match.name.replace(/^https?:\/\//, '') : undefined;
     console.log('LinksPage:handleDomainChange — computed domain:', newDomain);
+    clear;
     setDomain(newDomain);
+    setDomainId(val);
   }
 
   // Initial load
@@ -185,8 +168,10 @@ export default function LinksPage() {
     if (selectedDomain) {
       const match = domains.find(d => d.id === selectedDomain);
       const host = match ? match.name.replace(/^https?:\/\//, '') : undefined;
+      clear;
       setDomain(host);
-      console.log('LinksPage: context.domain set to', host);
+      setDomainId(selectedDomain);
+      console.log('LinksPage: context.domain set to', host, 'for selectedDomain', selectedDomain);
     }
   }, [selectedDomain, domains, setDomain]);
 
@@ -249,7 +234,7 @@ export default function LinksPage() {
 
           {/* Header actions */}
           <div className="flex justify-between px-4 mb-4">
-            <CreateLinkBar domainId={selectedDomain} />
+            <CreateLinkBar/>
             <Tooltip>
               <TooltipTrigger asChild>
                 <button className="p-2"><Filter size={18} /></button>

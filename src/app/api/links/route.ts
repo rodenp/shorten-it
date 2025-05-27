@@ -43,9 +43,9 @@ export async function POST(request: Request) {
     }
 
     // Validate required fields
-    if (!linkData.originalUrl || !Array.isArray(linkData.targets) || linkData.targets.length === 0) {
+    if (!linkData.originalUrl ) {
       return NextResponse.json(
-        { message: 'Missing required fields: originalUrl and targets' },
+        { message: 'Missing required fields: originalUrl' },
         { status: 400 }
       );
     }

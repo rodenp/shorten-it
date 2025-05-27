@@ -1,7 +1,6 @@
-// src/components/ABPage.tsx
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useLinkParams } from '@/context/LinkParamsContext';
 import { useRouter, usePathname } from 'next/navigation';
 import { Input } from '@/components/ui/input';
@@ -10,86 +9,86 @@ import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/com
 import { Separator } from '@/components/ui/separator';
 import { Button } from '@/components/ui/button';
 import { LinkSettingsSidebar } from '@/components/layout/link-settings-side-bar';
-import { Copy, ExternalLink, BarChart2, Trash2 } from 'lucide-react';
+import { ChevronLeft, Copy, ExternalLink, BarChart2, Trash2 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
+import { generatePayloadFromContext, normalizeUrl } from '@/lib/utils';
 import Link from 'next/link';
+import { debugLog } from '@/lib/logging';
+import type { LinkItem } from '@/types';
 
 export function ABPage() {
   const {
     id,
     originalUrl,
     shortUrl,
-    slug,
-    title,
-    tags,
-    folderId,
-    domainId,
-    targets,
     abTestConfig,
-    isCloaked,
-    clear,
+    setTargets,
+    setAbTestConfig,
+    getCurrentLinkItem,
   } = useLinkParams();
+  const ctx = getCurrentLinkItem();
 
-  const router   = useRouter();
+  const router = useRouter();
   const pathname = usePathname()!;
-  const toast    = useToast();
+  const toast = useToast();
 
-  // initialize local state from context only once
-  const [variantB, setVariantB] = useState(() => abTestConfig?.variantBUrl ?? '');
-  const [split,    setSplit]    = useState(() => abTestConfig?.splitPercentage ?? 50);
+  const originalRef = useRef<LinkItem | null>(null);
+  const [variantB, setVariantB] = useState('');
+  const [split, setSplit] = useState(50);
+  const [hasChanged, setHasChanged] = useState(false);
 
-  // if somehow context is empty, bail
-  if (!originalUrl) return null;
+  useEffect(() => {
+    const current = getCurrentLinkItem();
 
-  const normalize = (u: string) => {
-    const t = u.trim();
-    return t.startsWith('http') ? t : 'https://' + t;
-  };
+    if (current.id && originalRef.current?.id !== current.id) {
+      originalRef.current = structuredClone(current);
+      setVariantB(current.abTestConfig?.variantBUrl ?? '');
+      setSplit(current.abTestConfig?.splitPercentage ?? 50);
+      setHasChanged(false);
+      console.log('✅ ABPage: Snapshot original context', originalRef.current);
+    }
+  }, [id]);
+
+  useEffect(() => {
+    const original = originalRef.current;
+    if (!original) return;
+
+    const origAb = original.abTestConfig ?? { variantBUrl: '', splitPercentage: 50 };
+    const hasDiff = variantB !== origAb.variantBUrl || split !== origAb.splitPercentage;
+    setHasChanged(hasDiff);
+  }, [variantB, split]);
 
   const handleSave = async () => {
-
-  const basePayload: any = {
-    targets: [
-        { url: normalize(originalUrl), weight: split || 50},
-        { url: normalize(variantB),  weight: 100 - split || 50 },
-    ],
-      abTestConfig: {
-        variantAUrl: normalize(originalUrl),
-        variantBUrl: normalize(variantB),
-        splitPercentage: split,
-      },
+    const ab = {
+      variantAUrl: originalUrl,
+      variantBUrl: normalizeUrl(variantB),
+      splitPercentage: split,
     };
+    setAbTestConfig(ab);
+
+    const targets = [
+      { url: originalUrl, weight: split || 50 },
+      { url: normalizeUrl(variantB), weight: 100 - split || 50 },
+    ];
+    setTargets(targets);
+
+    const current = getCurrentLinkItem();
+    const original = originalRef.current;
+
+    if (JSON.stringify(current) === JSON.stringify(original)) {
+      toast.toast({ title: 'No changes to save.' });
+      return;
+    }
+
     const method = id ? 'PATCH' : 'POST';
     const url = id ? `/api/links/${id}` : '/api/links';
 
-    let payload: any;
-
-    if (method === 'POST') {
-      payload = {
-        ...(originalUrl != null && { originalUrl }),
-        ...(slug != null && { slug }),
-        ...(title != null && { title }),
-        ...(tags != null && { tags }),
-        ...(folderId != null && { folderId }),
-        ...(domainId != null && { domainId }),
-        ...(targets != null && { targets }),
-        ...(abTestConfig != null && { abTestConfig }),
-        ...(isCloaked != null && { isCloaked }),
-        ...(shortUrl != null && { shortUrl }),
-        ...basePayload,
-      };
-    } else {
-      // For PATCH, send everything, including nulls to explicitly clear fields
-      payload = {
-        originalUrl,
-        slug,
-        title,
-        tags,
-        folderId,
-        domainId,
-        ...basePayload,
-      };
-    }
+    const payload = generatePayloadFromContext({
+      method,
+      context: ctx,
+      original: original!,
+      current,
+    });
 
     try {
       const res = await fetch(url, {
@@ -100,7 +99,9 @@ export function ABPage() {
       });
       if (!res.ok) throw new Error(await res.text());
 
+      originalRef.current = JSON.parse(JSON.stringify(current));
       toast.toast({ title: id ? 'A/B settings updated!' : 'Link created with A/B test!' });
+      setHasChanged(false);
     } catch (err: any) {
       toast.toast({ title: 'Error', description: err.message, variant: 'destructive' });
     }
@@ -109,39 +110,32 @@ export function ABPage() {
   return (
     <div className="flex items-start">
       <LinkSettingsSidebar linkId={id} active={pathname} />
-
       <main className="flex-1 p-8 space-y-6 overflow-auto">
-        <header className="space-y-1">
-          <h1 className="text-2xl font-semibold">A/B Testing</h1>
-          <div className="flex items-center space-x-3 text-muted-foreground">
-            <Link href={shortUrl} className="underline text-primary">
-              {shortUrl}
-            </Link>
-            <ExternalLink className="cursor-pointer" />
-            <Copy className="cursor-pointer" />
-            <BarChart2 className="cursor-pointer" />
-            <Trash2 className="cursor-pointer" />
-          </div>
-          <p className="text-sm text-muted-foreground">
-            Test which variation of a web page delivers the best result.
-          </p>
+        <header className="flex items-center justify-between">
+          <Link href="/links" className="flex items-center text-muted-foreground hover:text-foreground">
+            <ChevronLeft className="w-5 h-5 mr-2" /> LINK LIST
+          </Link>
         </header>
-
-        <Separator />
 
         <Card>
           <CardHeader>
-            <CardTitle>Experiments</CardTitle>
-            <CardDescription>Configure your A/B test</CardDescription>
+            <CardTitle>A/B Testing</CardTitle>
+            <CardDescription>Test which variation of a web page delivers the best result.</CardDescription>
           </CardHeader>
           <CardContent className="space-y-6">
-            {/* Original URL (read-only) */}
+            <div className="flex items-center space-x-3 text-muted-foreground">
+              <Link href={shortUrl} className="underline text-primary">
+                {shortUrl}
+              </Link>
+              <Copy className="cursor-pointer hover:text-primary" />
+              <ExternalLink className="cursor-pointer hover:text-primary" />
+              <BarChart2 className="cursor-pointer hover:text-primary" />
+              <Trash2 className="cursor-pointer hover:text-destructive" />
+            </div>
             <div>
               <label className="block text-sm font-medium mb-1">Original page</label>
               <Input value={originalUrl} readOnly />
             </div>
-
-            {/* Variation URL */}
             <div>
               <label className="block text-sm font-medium mb-1">Variation page</label>
               <Input
@@ -149,8 +143,6 @@ export function ABPage() {
                 onChange={e => setVariantB(e.currentTarget.value)}
               />
             </div>
-
-            {/* Traffic split */}
             <div className="space-y-2">
               <Slider
                 value={[split]}
@@ -165,10 +157,9 @@ export function ABPage() {
               </div>
             </div>
 
-            {/* Actions */}
             <div className="flex justify-end space-x-4 pt-4">
-              <Button onClick={handleSave}>
-                {id ? 'Save changes' : 'Create & Save'}
+              <Button onClick={handleSave} disabled={!hasChanged}>
+                {id ? 'Save' : 'Create'}
               </Button>
               <Button variant="outline" onClick={() => router.back()}>
                 Cancel
