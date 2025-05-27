@@ -93,9 +93,6 @@ export const authOptions: NextAuthOptions = {
         }
 
         debugLog(`Auth: User ${credentials.email} authenticated successfully.`);
-        // Security Event Log: User login successful
-        console.log(`SECURITY_EVENT: User login successful for email: ${credentials.email}, userId: ${user.id || user._id?.toHexString()}`);
-        
         let userId = user.id;
         if (DB_TYPE === 'mongodb' && user._id && !user.id) {
             userId = user._id.toHexString();

@@ -2,6 +2,7 @@
 import { MongoClient, ServerApiVersion } from 'mongodb';
 import { Pool } from 'pg';
 import { debugLog } from '@/lib/logging';
+import { applyMigrations } from './migrations'; // Import applyMigrations
 
 const MONGODB_URI = process.env.MONGODB_URI;
 const POSTGRES_URI = process.env.POSTGRES_URI;
@@ -15,372 +16,18 @@ async function createPostgresTables() {
   if (!pool) {
     throw new Error('PostgreSQL pool not initialized.');
   }
-  const dbClient = await pool.connect(); 
+  const dbClient = await pool.connect();
   try {
-    await dbClient.query( 
-      'CREATE TABLE IF NOT EXISTS users ( ' +
-      '  id TEXT PRIMARY KEY, ' +
-      '  name TEXT, ' +
-      '  email TEXT UNIQUE, ' +
-      '  "emailVerified" TIMESTAMPTZ, ' +
-      '  image TEXT, ' +
-      '  password TEXT, ' +
-      '  "termsAcceptedAt" TIMESTAMPTZ, ' + // Added termsAcceptedAt
-      '  "createdAt" TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP, ' +
-      '  "updatedAt" TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP ' +
-      ');'
-    );
-    await dbClient.query(
-      'CREATE TABLE IF NOT EXISTS accounts ( ' +
-      '  id TEXT PRIMARY KEY, ' +
-      '  "userId" TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE, ' +
-      '  type TEXT NOT NULL, ' +
-      '  provider TEXT NOT NULL, ' +
-      '  "providerAccountId" TEXT NOT NULL, ' +
-      '  refresh_token TEXT, ' +
-      '  access_token TEXT, ' +
-      '  expires_at BIGINT, ' +
-      '  token_type TEXT, ' +
-      '  scope TEXT, ' +
-      '  id_token TEXT, ' +
-      '  session_state TEXT ' +
-      ');' 
-    );
-    await dbClient.query('CREATE UNIQUE INDEX IF NOT EXISTS "provider_providerAccountId_idx" ON accounts(provider, "providerAccountId");');
-
-    await dbClient.query( 
-      'CREATE TABLE IF NOT EXISTS sessions ( ' +
-      '  id TEXT PRIMARY KEY, ' +
-      '  "sessionToken" TEXT UNIQUE NOT NULL, ' +
-      '  "userId" TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE, ' +
-      '  expires TIMESTAMPTZ NOT NULL ' +
-      ');' 
-    );
-
-    await dbClient.query( 
-      'CREATE TABLE IF NOT EXISTS verification_tokens ( ' +
-      '  identifier TEXT NOT NULL, ' +
-      '  token TEXT UNIQUE NOT NULL, ' +
-      '  expires TIMESTAMPTZ NOT NULL ' +
-      ');' 
-    );
-    await dbClient.query('CREATE UNIQUE INDEX IF NOT EXISTS "token_identifier_idx" ON verification_tokens(token, identifier);');
-
-    await dbClient.query(`
-
-      CREATE TABLE IF NOT EXISTS domains (
-        id TEXT PRIMARY KEY ,
-        "userId" TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE, 
-        "domainName" TEXT NOT NULL, -- Temporarily remove UNIQUE for existing data, will add back with userId
-        type    TEXT NOT NULL CHECK (type IN ('local','custom')),
-        verified BOOLEAN DEFAULT FALSE NOT NULL, -- Added verified
-        "createdAt" TIMESTAMPTZ NOT NULL DEFAULT now(),
-        "updatedAt" TIMESTAMPTZ NOT NULL DEFAULT now()
-      );`
-    );
-    // Ensure domainName is unique per user, not globally, to allow different users to use e.g. 'app.mydomain.com' if 'mydomain.com' is different
-    // However, for 'custom' domains, the domainName itself must be globally unique.
-    // For 'local' (subdomains on a shared platform domain), it's "subdomain.platform.com" - subdomain part needs to be unique.
-    // The original UNIQUE on "domainName" might be too restrictive if it implies global uniqueness for all types.
-    // A better approach for custom domains is to enforce uniqueness in the application logic upon creation/verification.
-    // For local subdomains, the "domainName" (which would be "subdomain.platform.com") should be unique.
-    // Let's assume for now the original intent of UNIQUE on "domainName" was for custom domains primarily.
-    // The index on ("userId", "domainName") is good for user-specific lookups.
-    // If "domainName" should be globally unique for custom domains, this needs careful handling.
-    // For now, retaining the ("userId", "domainName") unique index. A separate check for global uniqueness
-    // of custom domains would be needed in the model's create/update logic.
-    await dbClient.query('CREATE UNIQUE INDEX IF NOT EXISTS "userId_domainName_idx" ON domains("userId", "domainName");');
-    // Add back a unique index on domainName for custom types if it's truly global.
-    // For now, this is commented out to avoid issues if existing data violates it after schema change.
-    // await dbClient.query('CREATE UNIQUE INDEX IF NOT EXISTS "unique_custom_domainName_idx" ON domains("domainName") WHERE type = \'custom\';');
-
-
-    await dbClient.query(` 
-      CREATE TABLE IF NOT EXISTS campaign_templates (
-        id TEXT PRIMARY KEY ,
-        "userId" TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-        name TEXT NOT NULL,
-        source TEXT,
-        medium TEXT,
-        campaign TEXT,
-        term TEXT,
-        content TEXT,
-        "createdAt" TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-        "updatedAt" TIMESTAMPTZ NOT NULL DEFAULT NOW()
-      );`
-    );
-
-    await dbClient.query( 
-      'CREATE TABLE IF NOT EXISTS api_keys ( ' +
-      '  id TEXT PRIMARY KEY, ' +
-      '  "userId" TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE, ' +
-      '  name TEXT NOT NULL, ' +
-      '  "hashedKey" TEXT NOT NULL UNIQUE, ' +
-      '  prefix TEXT NOT NULL, ' +
-      '  permissions TEXT[], ' +
-      '  "lastUsedAt" TIMESTAMPTZ, ' +
-      '  "createdAt" TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP, ' +
-      '  "updatedAt" TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP ' + // This was already here, ensure it's used
-      ');'
-    );
-    await dbClient.query('CREATE INDEX IF NOT EXISTS "apiKey_userId_idx" ON api_keys("userId");');
-    // The "apiKey_updatedAt_idx" index was already specified in the original db.ts, which is good.
-    // No change needed here if it was already present. If it was missing, this would be the place to add it.
-    // await dbClient.query('CREATE INDEX IF NOT EXISTS "apiKey_updatedAt_idx" ON api_keys("updatedAt");');
-
-
-    await dbClient.query(`
-      CREATE TABLE IF NOT EXISTS user_preferences (
-        "userId" TEXT PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
-        theme TEXT DEFAULT 'system' CHECK (theme IN ('light', 'dark', 'system')),
-        "isCompactMode" BOOLEAN DEFAULT FALSE,
-        "updatedAt" TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
-      );
-    `);
-
-    await dbClient.query( 
-      'CREATE TABLE IF NOT EXISTS link_groups ( ' +
-      '  id TEXT PRIMARY KEY, ' +
-      '  "userId" TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE, ' +
-      '  name TEXT NOT NULL, ' +
-      '  description TEXT, ' +
-      '  "createdAt" TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP, ' +
-      '  "updatedAt" TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP ' +
-      ');' 
-    );
-    await dbClient.query('CREATE UNIQUE INDEX IF NOT EXISTS "userId_link_group_name_idx" ON link_groups("userId", name);');
-
-    await dbClient.query( 
-      'CREATE TABLE IF NOT EXISTS retargeting_pixels ( ' +
-      '  id TEXT PRIMARY KEY, ' +
-      '  "userId" TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE, ' +
-      '  name TEXT NOT NULL, ' +
-      '  type TEXT NOT NULL, ' +
-      '  "pixelIdValue" TEXT NOT NULL, ' +
-      '  "createdAt" TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP, ' +
-      '  "updatedAt" TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP ' +
-      ');' 
-    );
-    await dbClient.query('CREATE UNIQUE INDEX IF NOT EXISTS "userId_retargeting_pixel_name_idx" ON retargeting_pixels("userId", name);');
-    await dbClient.query('CREATE INDEX IF NOT EXISTS "retargetingPixel_userId_idx" ON retargeting_pixels("userId");');
-
-    await dbClient.query(`
-      CREATE TABLE IF NOT EXISTS team_memberships (
-        id TEXT PRIMARY KEY, 
-        "teamOwnerId" TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE, 
-        "memberUserId" TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE, 
-        role TEXT NOT NULL CHECK (role IN ('admin', 'editor', 'viewer')), 
-        "createdAt" TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
-        "updatedAt" TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
-        CONSTRAINT "unique_team_member" UNIQUE ("teamOwnerId", "memberUserId") 
-      );
-    `);
-    await dbClient.query('CREATE INDEX IF NOT EXISTS "teamMembership_teamOwnerId_idx" ON team_memberships("teamOwnerId");');
-    await dbClient.query('CREATE INDEX IF NOT EXISTS "teamMembership_memberUserId_idx" ON team_memberships("memberUserId");');
-
-    await dbClient.query( 
-      'CREATE TABLE IF NOT EXISTS links ( ' +
-      '  id TEXT PRIMARY KEY, ' +
-      '  "userId" TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE, ' +
-      '  "originalUrl" TEXT NOT NULL, ' +
-      '  "shortUrl" TEXT NOT NULL UNIQUE, ' +
-      '  slug TEXT NOT NULL, ' +
-      '  "clickCount" INTEGER DEFAULT 0, ' +
-      '  title TEXT, ' +
-      '  tags TEXT[], ' +
-      '  "isCloaked" BOOLEAN DEFAULT FALSE, ' +
-      '  "domainId" TEXT REFERENCES domains(id) ON DELETE SET NULL, ' +
-      '  "groupId" TEXT REFERENCES link_groups(id) ON DELETE SET NULL, ' +
-      '  "deepLinkConfig" JSONB, ' +
-      '  "abTestConfig" JSONB, ' +
-      '  targets JSONB NOT NULL, ' +
-      '  last_used_target_index INTEGER DEFAULT NULL, ' + // Added this line
-      '  "createdAt" TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP, ' +
-      '  "updatedAt" TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP, ' +
-      '  "rotation_start" TIMESTAMPTZ DEFAULT NULL, ' +
-      '  "rotation_end" TIMESTAMPTZ DEFAULT NULL, ' +
-      '  "click_limit" INTEGER DEFAULT NULL, ' +
-      '  CONSTRAINT "unique_slug_on_domain" UNIQUE (slug, "domainId") ' +
-      ');' 
-    );
-    await dbClient.query('CREATE INDEX IF NOT EXISTS "link_userId_idx" ON links("userId");');
-    await dbClient.query('CREATE INDEX IF NOT EXISTS "link_groupId_idx" ON links("groupId");');
-    await dbClient.query('CREATE INDEX IF NOT EXISTS "link_domainId_idx" ON links("domainId");');
-    await dbClient.query('CREATE INDEX IF NOT EXISTS "link_slug_idx" ON links(slug);');
-
-    await dbClient.query( 
-      'CREATE TABLE IF NOT EXISTS link_retargeting_pixels ( ' +
-      '  "linkId" TEXT NOT NULL REFERENCES links(id) ON DELETE CASCADE, ' +
-      '  "pixelId" TEXT NOT NULL REFERENCES retargeting_pixels(id) ON DELETE CASCADE, ' +
-      '  PRIMARY KEY ("linkId", "pixelId") ' +
-      ');' 
-    );
-
-    await dbClient.query( 
-      'CREATE TABLE IF NOT EXISTS analytic_events ( ' +
-      '  id TEXT PRIMARY KEY, ' +
-      '  "linkId" TEXT NOT NULL REFERENCES links(id) ON DELETE CASCADE, ' +
-      '  timestamp TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP, ' +
-      '  "ipAddress" TEXT, ' +
-      '  "userAgent" TEXT, ' +
-      '  country TEXT, ' +
-      '  city TEXT, ' +
-      '  "deviceType" TEXT, ' +
-      '  browser TEXT, ' +
-      '  os TEXT, ' +
-      '  referrer TEXT ' +
-      ');' 
-    );
-    await dbClient.query('CREATE INDEX IF NOT EXISTS "analytic_event_linkId_idx" ON analytic_events("linkId");');
-    await dbClient.query('CREATE INDEX IF NOT EXISTS "analytic_event_timestamp_idx" ON analytic_events(timestamp);' );
-    await dbClient.query('CREATE INDEX IF NOT EXISTS "analytic_event_country_idx" ON analytic_events(country);' );
-    await dbClient.query('CREATE INDEX IF NOT EXISTS "analytic_event_deviceType_idx" ON analytic_events("deviceType");' );
-
-    await dbClient.query(`
-      CREATE TABLE IF NOT EXISTS folders (
-        id SERIAL PRIMARY KEY,
-        "userId" TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-        name TEXT NOT NULL,
-        "createdAt" TIMESTAMPTZ NOT NULL DEFAULT now()
-      );`
-    );
-
-    await dbClient.query(`
-      ALTER TABLE links
-        ADD COLUMN IF NOT EXISTS "folderId" INTEGER REFERENCES folders(id) ON DELETE SET NULL;`
-    );
-
-    await dbClient.query(`
-      CREATE TABLE IF NOT EXISTS plans (
-        id TEXT PRIMARY KEY,
-        name TEXT NOT NULL,
-        price NUMERIC NOT NULL,
-        period TEXT NOT NULL,
-        "limit" BIGINT NOT NULL
-      );`
-    );
-    await dbClient.query(`
-      CREATE TABLE IF NOT EXISTS features (
-        id SERIAL PRIMARY KEY,
-        key TEXT UNIQUE NOT NULL,
-        label TEXT NOT NULL,
-        section TEXT NOT NULL  -- 'Core' | 'Advanced' | 'Essentials'
-      );`
-    );
-    await dbClient.query(`    
-      CREATE TABLE IF NOT EXISTS plan_features (
-        plan_id TEXT REFERENCES plans(id) ON DELETE CASCADE,
-        feature_id INT REFERENCES features(id) ON DELETE CASCADE,
-        PRIMARY KEY (plan_id, feature_id)
-      );`
-    );
-    await dbClient.query(`
-      CREATE TABLE IF NOT EXISTS subscriptions (
-        "userId"          TEXT        PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
-        "planId"          TEXT        NOT NULL REFERENCES plans(id),
-        "nextBillingDate" TIMESTAMP   NULL,
-        usage             BIGINT      NOT NULL DEFAULT 0,
-        "limit"           BIGINT      NOT NULL
-      );`
-    );
-
-    // User Consents Table
-    await dbClient.query(`
-      CREATE TABLE IF NOT EXISTS user_consents (
-        id TEXT PRIMARY KEY DEFAULT gen_random_uuid(),
-        "userId" TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-        "consentType" TEXT NOT NULL,
-        "isGiven" BOOLEAN NOT NULL,
-        timestamp TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
-        UNIQUE ("userId", "consentType")
-      );`
-    );
-    await dbClient.query('CREATE INDEX IF NOT EXISTS "userConsents_userId_idx" ON user_consents("userId");');
-
-    const { rowCount } = await pool.query(`SELECT 1 FROM plans LIMIT 1`);
-    if (!rowCount) {
-      // Insert plans
-      await dbClient.query(
-        `INSERT INTO plans (id,name,price,period,"limit") VALUES
-          ('free','Free',0,'Monthly',50000),
-          ('hobby','Hobby',5,'Monthly',0),
-          ('personal','Personal',18,'Monthly',0),
-          ('team','Team',48,'Monthly',0),
-          ('enterprise','Enterprise',148,'Monthly',0)
-        `
-      );
-      // Insert features, grouped by section
-      const allFeatures = [
-        // Core
-        { key: 'users', label: 'Users', section: 'Core' },
-        { key: 'domains', label: 'Custom domains', section: 'Core' },
-        { key: 'branded', label: 'Branded links total', section: 'Core' },
-        { key: 'automation', label: 'Link automation (year 1)', section: 'Core' },
-        { key: 'redirects', label: 'Redirects', section: 'Core' },
-        { key: 'clicks', label: 'Tracked clicks', section: 'Core' },
-        // Advanced
-        { key: 'country', label: 'Country targeting', section: 'Advanced' },
-        { key: 'region', label: 'Region targeting', section: 'Advanced' },
-        { key: 'expireDate', label: 'Link expiration by Date', section: 'Advanced' },
-        { key: 'encryption', label: 'End-to-end link encryption', section: 'Advanced' },
-        { key: 'expireClick', label: 'Link expiration by Click Limit', section: 'Advanced' },
-        { key: 'cloaking', label: 'Link cloaking', section: 'Advanced' },
-        { key: 'referrer', label: 'Referrer hiding', section: 'Advanced' },
-        { key: 'password', label: 'Password protection', section: 'Advanced' },
-        { key: 'deeplinks', label: 'Deep links', section: 'Advanced' },
-        { key: 'multiteams', label: 'Multiple teams', section: 'Advanced' },
-        { key: 'sso', label: 'Single sign-on (SSO)', section: 'Advanced' },
-        { key: 'uptime', label: 'SLA of 99,9% uptime', section: 'Advanced' },
-        { key: 'exportS3', label: 'Export raw click data to S3', section: 'Advanced' },
-        { key: 'agreements', label: 'Custom agreements', section: 'Advanced' },
-        { key: 'ai', label: 'AI Assistant', section: 'Advanced' },
-        // Essentials
-        { key: 'destUrl', label: 'Destination URL updating', section: 'Essentials' },
-        { key: 'api', label: 'API', section: 'Essentials' },
-        { key: 'slugEdit', label: 'URL shortcode (slug) editing', section: 'Essentials' },
-        { key: 'ssl', label: "SSL (by Let's Encrypt)", section: 'Essentials' },
-        { key: 'mobile', label: 'Mobile targeting', section: 'Essentials' },
-        { key: 'chat', label: 'Chat support', section: 'Essentials' },
-        { key: 'tags', label: 'Tags for links', section: 'Essentials' },
-        { key: 'qr', label: 'QR code', section: 'Essentials' },
-        { key: 'mainPage', label: 'Main page redirect', section: 'Essentials' },
-        { key: '404', label: '404 redirect', section: 'Essentials' },
-        { key: '301', label: '301 redirect code', section: 'Essentials' },
-        { key: 'integrations', label: 'App integrations', section: 'Essentials' },
-        { key: 'tools', label: 'Tools & Extensions', section: 'Essentials' },
-        { key: 'utm', label: 'UTM builder', section: 'Essentials' },
-        { key: 'gdpr', label: 'GDPR privacy', section: 'Essentials' },
-        { key: 'import', label: 'Link import', section: 'Essentials' },
-        { key: 'export', label: 'Link export', section: 'Essentials' },
-        { key: 'ab', label: 'A/B Testing', section: 'Essentials' },
-      ];
-      for (const feat of allFeatures) {
-        await dbClient.query(
-          `INSERT INTO features (key, label, section) VALUES ($1,$2,$3)`,
-          [feat.key, feat.label, feat.section]
-        );
-      }
-      // Map features → plans (insert only the features each plan has)
-      const planFeatureMap: Record<string, string[]> = {
-        free: ['users','domains','branded','redirects','clicks'],
-        hobby: ['users','domains','branded','redirects','clicks','referrer'],
-        personal: ['users','domains','branded','automation','redirects','clicks','cloaking','expireDate','password'],
-        team: ['users','domains','branded','automation','redirects','clicks','cloaking','expireDate','password','deeplinks','region','sso'],
-        enterprise: Object.keys(allFeatures)  // all features
-      };
-      for (const [planId, feats] of Object.entries(planFeatureMap)) {
-        for (const key of feats) {
-          await dbClient.query(`
-            INSERT INTO plan_features (plan_id, feature_id)
-            SELECT $1, f.id FROM features f WHERE f.key = $2
-          `, [planId, key]);
-        }
-      }
-    }
-
-    debugLog('PostgreSQL tables checked/created successfully.');
+    // All DDL and seeding logic has been moved to the '000_initial_schema' migration.
+    // This function now only ensures a connection can be made and then releases it.
+    // The actual schema setup is handled by applyMigrations.
+    debugLog('[DB] createPostgresTables: Connection successful. Schema setup and data seeding are now handled by the migration system.');
+    // Optionally, you could perform a very basic query to ensure the DB is responsive,
+    // e.g., await dbClient.query('SELECT 1;');
+    // However, applyMigrations will do more comprehensive checks (like creating schema_migrations table).
   } catch (err) {
-    console.error('Error creating/checking PostgreSQL tables:', err);
+    console.error('[DB] Error during initial PostgreSQL connection or basic check in createPostgresTables:', err);
+    // Re-throw the error so it's caught by the caller in the main DB initialization block
     throw err;
   } finally {
     dbClient.release();
@@ -428,9 +75,19 @@ if (DB_TYPE === 'mongodb') {
 
   (async () => {
     try {
-      await createPostgresTables();
-    } catch (e) {
-      console.error("Failed to initialize/check all PostgreSQL tables/indexes:", e);
+      await createPostgresTables(); // Ensures base tables are there
+      if (pool) { // Ensure pool is initialized before using
+        await applyMigrations(pool); // Apply pending migrations
+        debugLog('[DB Init] Migrations applied successfully.');
+      } else {
+        console.error('[DB Init] PostgreSQL pool not initialized before attempting migrations.');
+        // Potentially throw an error or handle this state if critical
+      }
+    } catch (e: any) { // Catch errors from both createPostgresTables and applyMigrations
+      console.error("[DB Init] Failed to initialize PostgreSQL tables or apply migrations:", e.message, e.stack);
+      // Depending on the application's needs, you might want to exit the process
+      // if the database schema cannot be prepared correctly.
+      // process.exit(1); // Example: Exit if DB setup fails critically
     }
   })();
 

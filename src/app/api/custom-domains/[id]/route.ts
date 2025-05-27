@@ -1,9 +1,8 @@
 
 import { getServerSession } from "next-auth/next";
 import { authOptions } from "@/lib/auth";
-import { DomainModel } from "@/models/Domains"; // Changed to DomainModel
+import { CustomDomainModel } from "@/models/CustomDomain";
 import { NextResponse } from "next/server";
-import { Domain } from "@/models/Domains"; // Import Domain interface for type casting
 
 interface RouteParams {
   params: { id: string };
@@ -17,14 +16,11 @@ export async function GET(request: Request, { params }: RouteParams) {
       return NextResponse.json({ message: "Unauthorized" }, { status: 401 });
     }
 
-    // Use DomainModel and ensure userId is passed if required by the model's method signature
-    const domain = await DomainModel.findById(params.id); // Assuming findById in DomainModel does not require userId, or it's handled if it does.
-                                                          // Based on the updated DomainModel, findById does NOT take userId.
-                                                          // Ownership check is manual after fetching.
+    const domain = await CustomDomainModel.findById(params.id);
     if (!domain) {
       return NextResponse.json({ message: "Domain not found" }, { status: 404 });
     }
-    if (domain.userId !== session.user.id) { // Manual ownership check
+    if (domain.userId !== session.user.id) {
       return NextResponse.json({ message: "Forbidden - You do not own this domain" }, { status: 403 });
     }
     return NextResponse.json(domain);
@@ -42,34 +38,29 @@ export async function PUT(request: Request, { params }: RouteParams) {
     if (!session || !session.user || !session.user.id) {
       return NextResponse.json({ message: "Unauthorized" }, { status: 401 });
     }
-    const userId = session.user.id; // Get userId for update method
 
-    const existingDomain = await DomainModel.findById(params.id); // Check existence and ownership
+    const existingDomain = await CustomDomainModel.findById(params.id);
     if (!existingDomain) {
       return NextResponse.json({ message: "Domain not found" }, { status: 404 });
     }
-    if (existingDomain.userId !== userId) {
+    if (existingDomain.userId !== session.user.id) {
       return NextResponse.json({ message: "Forbidden - You do not own this domain" }, { status: 403 });
     }
 
     const body = await request.json();
+    // We only allow updating 'verified' status and potentially 'domainName' via this route.
     const { domainName, verified } = body;
     
-    // Ensure type compatibility with Domain interface from DomainModel
-    const updateData: Partial<Pick<Domain, 'domainName' | 'verified'>> = {}; 
+    const updateData: Partial<Pick<CustomDomain, 'domainName' | 'verified'>> = {};
     if (domainName !== undefined && typeof domainName === 'string' && domainName.trim().length > 0) {
+        // Add domain name validation if you allow updates to it
         const domainRegex = /^(?:[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?\.)+[a-zA-Z]{2,6}$/;
         if (!domainRegex.test(domainName.trim())) {
             return NextResponse.json({ message: "Invalid domain name format for update" }, { status: 400 });
         }
-        // Note: DomainModel.update logic should handle if domainName changes are allowed (e.g., for 'custom' type if not verified)
         updateData.domainName = domainName.trim();
     }
     if (verified !== undefined && typeof verified === 'boolean') {
-      // Only allow 'verified' to be updated if the domain type is 'custom'
-      if (existingDomain.type !== 'custom') {
-        return NextResponse.json({ message: "Verification status can only be updated for 'custom' domains." }, { status: 400 });
-      }
       updateData.verified = verified;
     }
 
@@ -77,8 +68,7 @@ export async function PUT(request: Request, { params }: RouteParams) {
       return NextResponse.json({ message: "No update data provided" }, { status: 400 });
     }
 
-    // Use DomainModel.update, ensuring userId is passed
-    const updatedDomain = await DomainModel.update(params.id, userId, updateData);
+    const updatedDomain = await CustomDomainModel.update(params.id, updateData);
     if (!updatedDomain) {
       return NextResponse.json({ message: "Failed to update domain" }, { status: 500 });
     }
@@ -100,19 +90,16 @@ export async function DELETE(request: Request, { params }: RouteParams) {
     if (!session || !session.user || !session.user.id) {
       return NextResponse.json({ message: "Unauthorized" }, { status: 401 });
     }
-    const userId = session.user.id; // Get userId for delete method
 
-    // Check ownership before deleting
-    const domain = await DomainModel.findById(params.id); 
+    const domain = await CustomDomainModel.findById(params.id);
     if (!domain) {
       return NextResponse.json({ message: "Domain not found" }, { status: 404 });
     }
-    if (domain.userId !== userId) {
+    if (domain.userId !== session.user.id) {
       return NextResponse.json({ message: "Forbidden - You do not own this domain" }, { status: 403 });
     }
 
-    // Use DomainModel.delete, ensuring userId is passed
-    const result = await DomainModel.delete(params.id, userId);
+    const result = await CustomDomainModel.delete(params.id);
     if (!result.success) {
       return NextResponse.json({ message: result.message || "Failed to delete domain" }, { status: 500 });
     }
