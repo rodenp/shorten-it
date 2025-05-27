@@ -69,6 +69,8 @@
     COPY --from=source_code /app/repo_content/public ./public
     # next.config.ts is at the root of what was copied into builder (which was /app/repo_content/)
     COPY --from=builder /app/next.config.ts ./next.config.ts 
+
+    COPY --from=builder /app/scripts/migrations.ts ./scripts/migrations.ts
     
     EXPOSE ${PORT}
     
