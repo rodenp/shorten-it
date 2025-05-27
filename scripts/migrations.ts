@@ -1,5 +1,5 @@
 import { Pool } from 'pg';
-import { APP_VERSION } from './config';
+import { APP_VERSION } from '../src/lib/config';
 
 let pool: Pool | null = null;
 
