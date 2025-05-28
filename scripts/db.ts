@@ -13,6 +13,8 @@ let client: MongoClient | null = null;
 let clientPromise: Promise<MongoClient> | null = null;
 let pool: Pool | null = null;
 
+pool = new Pool({ connectionString: POSTGRES_URI });
+
 // createPostgresTables remains as a helper, potentially for connection checks or basic setup if ever needed outside migrations.
 // For now, it's just a connection check as migrations handle DDL.
 export async function createPostgresTables() {
