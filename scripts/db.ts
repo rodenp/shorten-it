@@ -13,13 +13,16 @@ let client = null;
 let clientPromise = null;
 let pool = null;
 
-const isBuildTime = process.env.npm_lifecycle_event === 'build';
+const allowedLifecycleEvents = ['build', 'start'];
 
-if (isBuildTime) {
-  console.log('[DB] Initializing PostgreSQL pool during build');
-  pool = new Pool({ connectionString: POSTGRES_URI });
+// Detect current event (from NPM) or fallback flag (for Docker)
+const currentEvent = process.env.npm_lifecycle_event;
+
+if (currentEvent && allowedLifecycleEvents.includes(currentEvent)){
+  console.log(`[DB] Creating PostgreSQL pool (event: ${currentEvent})`);
+  pool = new Pool({connectionString: process.env.POSTGRES_URI});
 } else {
-  console.log('[DB] Skipping pool init (runtime)');
+  console.log(`[DB] Skipping pool (event: ${currentEvent})`);
 }
 
 // createPostgresTables remains as a helper, potentially for connection checks or basic setup if ever needed outside migrations.
