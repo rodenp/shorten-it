@@ -13,8 +13,6 @@ let client = null;
 let clientPromise = null;
 let pool = null;
 
-pool = new Pool({ connectionString: POSTGRES_URI });
-
 // createPostgresTables remains as a helper, potentially for connection checks or basic setup if ever needed outside migrations.
 // For now, it's just a connection check as migrations handle DDL.
 async function createPostgresTables() {
