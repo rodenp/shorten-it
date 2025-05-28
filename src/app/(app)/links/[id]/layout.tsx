@@ -1,32 +1,48 @@
-// src/app/links/[id]/layout.tsx
+// src/app/(app)/links/[id]/layout.tsx
 'use client';
 
-import { ReactNode, useEffect } from 'react';
+import { ReactNode, useEffect, useRef, useState } from 'react';
 import { useParams } from 'next/navigation';
 import { useLinkParams } from '@/context/LinkParamsContext';
 import { debugLog } from '@/lib/logging';
 
 export default function LinkIdLayout({ children }: { children: ReactNode }) {
   const { id } = useParams() as { id: string };
-  const { linkItem, initialize } = useLinkParams();
+  const { linkItem, initialize, getCurrentLinkItem } = useLinkParams();
 
+  const [contextReady, setContextReady] = useState(false);
+  const initializedRef = useRef(false);
+
+  // Fetch and initialize context once per ID
   useEffect(() => {
-    debugLog('src/app/links/[id]:LinkIdLayout called to populate context');
-    // Only fetch & initialize if we don't already have the correct link in context
-    if (!linkItem || linkItem.id !== id) {
+    if (!initializedRef.current && id) {
+      debugLog('src/app/links/[id]:LinkIdLayout - fetching link data for ID:', id);
       (async () => {
         try {
           const res = await fetch(`/api/links/${id}`);
           if (!res.ok) throw new Error('Failed to fetch link');
           const data = await res.json();
-          initialize(data);
+
+          initialize(data); // sets all context state
+          initializedRef.current = true;
+          setContextReady(true);
+
+          console.log('✅ Initialized link context:', data);
         } catch (err) {
           console.error('Error loading link for context:', err);
         }
       })();
     }
-  }, [id, linkItem, initialize]);
+  }, [id, initialize]);
 
-  // This layout doesn't render anything itself—just populates context if needed.
+  // Log the current context after it has been initialized and state has updated
+  useEffect(() => {
+    if (contextReady) {
+      const current = getCurrentLinkItem();
+      console.log('📦 LinkIdLayout:linkItem=', current);
+      debugLog('src/app/links/[id]:LinkIdLayout:linkItem=', current);
+    }
+  }, [contextReady, getCurrentLinkItem]);
+
   return <>{children}</>;
 }

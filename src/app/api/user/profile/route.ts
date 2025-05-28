@@ -3,6 +3,7 @@ import { getServerSession } from "next-auth/next";
 import { authOptions } from "@/lib/auth";
 import { UserModel, User } from "@/models/User";
 import { NextResponse } from "next/server";
+import { DB_TYPE } from "@/lib/db";
 import bcrypt from 'bcryptjs'; // Moved bcrypt import to the top
 
 export async function GET(request: Request) {

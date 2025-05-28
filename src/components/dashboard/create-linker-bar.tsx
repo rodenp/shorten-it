@@ -7,22 +7,31 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Plus } from 'lucide-react';
 import { useLinkParams } from '@/context/LinkParamsContext';
+import { normalizeUrl } from '@/lib/utils';
 
 export function CreateLinkBar() {
-  const [url, setUrl] = useState('');
   const router = useRouter();
-  const { originalUrl, setOriginalUrl, setSlug } = useLinkParams();
+  const { initialize, originalUrl, setOriginalUrl, setSlug, 
+          setTargets,
+          domain,
+          setShortUrl,
+   } = useLinkParams();
 
   const handleGo = () => {
-    const trimmed = originalUrl.trim();
-    if (!trimmed) return;
+    const norm = normalizeUrl(originalUrl);
+    setOriginalUrl(norm);
+    if (!norm) return;
 
-    // 1) Set the original URL in context
-    setOriginalUrl(trimmed);
+    //let link: LinkItem = {} as LinkItem; // 👈 create uninitialized object
+    //initialize(link); // 👈 pass it to your initializer
+
+    const computedTargets = [{ url: normalizeUrl(norm), weight: 100 }];
+    setTargets(computedTargets);
 
     // 2) Generate and set a random slug (6 characters)
     const newSlug = Math.random().toString(36).substring(2, 8);
     setSlug(newSlug);
+    setShortUrl(`${domain}/${newSlug}`);
 
     // 3) Navigate to the edit page
     router.push('/links/basic');

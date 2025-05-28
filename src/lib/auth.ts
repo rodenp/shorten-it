@@ -5,7 +5,7 @@ import type { User as NextAuthUser } from 'next-auth';
 import CredentialsProvider from 'next-auth/providers/credentials';
 import { UserModel } from '@/models/User';
 import bcrypt from 'bcryptjs';
-import { DB_TYPE, clientPromise, pool } from '../../scripts/db';
+import { DB_TYPE, clientPromise, pool } from './db';
 import { MongoDBAdapter } from "@auth/mongodb-adapter";
 import PgAdapter from "@auth/pg-adapter";
 import { debugLog, debugWarn } from '@/lib/logging';

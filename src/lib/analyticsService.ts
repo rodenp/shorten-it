@@ -1,5 +1,5 @@
 
-import { pool, DB_TYPE } from '../../scripts/db';
+import { pool, DB_TYPE } from './db';
 import { AnalyticEvent, LinkItem } from '@/types'; // Added LinkItem for link check
 import { v4 as uuidv4 } from 'uuid';
 

@@ -33,28 +33,27 @@ export interface LinkItem {
   id:string;
   userId?: string; // Added userId for clarity on ownership
   originalUrl: string; 
-  targets: LinkTarget[]; 
   shortUrl: string;
   slug: string;
   clickCount: number;
+  title?: string;
+  tags?: string[];
+  isCloaked?: boolean;
+  domainId?: string; // Keep the ID for linking if needed separately
+  groupId?: string; 
+  deepLinkConfig?: { iosAppUriScheme: string; androidAppUriScheme: string; fallbackUrl?: string };
+  abTestConfig?: ABTestConfig | null;
+  targets: LinkTarget[]; 
   createdAt: string; 
   updatedAt?: string; 
-  customDomain?: string; // This is the domain NAME, not ID
-  domainId?: string; // Keep the ID for linking if needed separately
-  isCloaked?: boolean;
-  deepLinkConfig?: { iosAppUriScheme: string; androidAppUriScheme: string; fallbackUrl?: string };
-  abTestConfig?: ABTestConfig
-  retargetingPixels?: RetargetingPixel[]; // Changed to full RetargetingPixel objects
-  tags?: string[];
-  title?: string;
-  groupId?: string; 
-  groupName?: string; // Added for displaying group name directly
   lastUsedTargetIndex?: number | null; // Added for round-robin URL rotation, can be null
   folderId: string | null; // Added for folder organization
-  domain: string;
   rotationStart?: string   
   rotationEnd?: string     
   clickLimit?: number   
+  domain?: string; // This is the domain NAME, not ID
+  groupName?: string; // Added for displaying group name directly
+  retargetingPixels?: RetargetingPixel[]; // Changed to full RetargetingPixel objects
 }
 
 export interface AnalyticEvent {
@@ -85,16 +84,6 @@ export interface TeamMember extends UserProfile {
   membershipUpdatedAt?: string;
 }
 
-
-export interface CustomDomain {
-  id: string;
-  userId?: string; // Added userId for clarity on ownership
-  domainName: string;
-  verified: boolean;
-  createdAt: string;
-  updatedAt?: string; 
-}
-
 export interface ApiKey {
   id: string;
   userId?: string; // Added userId for clarity on ownership
@@ -105,4 +94,14 @@ export interface ApiKey {
   updatedAt?: string; 
   lastUsedAt?: string; 
   permissions?: string[]; 
+}
+
+export interface Folder {
+  id: string;
+  name: string;
+}
+export interface DomainOption {
+  id: string;
+  name: string;
+  type: 'custom' | 'sub';
 }

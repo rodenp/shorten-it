@@ -3,7 +3,6 @@
 
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { SubDomainsSettings } from "@/components/settings/sub-domains-settings";
-import { CustomDomainsSettings } from "@/components/settings/custom-domains-settings";
 import { CampaignTemplatesSettings } from "@/components/settings/campaign-templates-settings";
 import { ProfileSettings } from "@/components/settings/profile-settings";
 import { AppearanceSettings } from "@/components/settings/appearance-settings";
@@ -18,7 +17,6 @@ export default function SettingsPage() {
   const tabsConfig = [
     { value: "profile", label: "Profile", icon: UserCircle, component: <ProfileSettings /> },
     { value: "sub-domain", label: "Sub Domain", icon: Globe, component: <SubDomainsSettings /> },
-    { value: "domains", label: "Custom Domains", icon: Globe, component: <CustomDomainsSettings /> },
     { value: "campaigns", label: "Campaign Templates", icon: Globe, component: <CampaignTemplatesSettings /> },
     { value: "team", label: "Team Collaboration", icon: Users, component: <TeamCollaborationSettings /> },
     { value: "retargeting", label: "Retargeting", icon: Target, component: <RetargetingSettings /> }, 

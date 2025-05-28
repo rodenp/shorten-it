@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useRouter, usePathname } from 'next/navigation';
 import { useLinkParams } from '@/context/LinkParamsContext';
 import Link from 'next/link';
@@ -40,6 +40,8 @@ import {
   verticalListSortingStrategy,
 } from '@dnd-kit/sortable';
 import { SortableTargetItem } from '@/components/links/SortableTargetItem';
+import type { LinkItem } from '@/types'; 
+import { generatePayloadFromContext, normalizeUrl } from '@/lib/utils';
 
 type Target = { id: string; url: string; weight: number };
 
@@ -52,13 +54,7 @@ export function URLRotatePage() {
     id,
     originalUrl,
     shortUrl,
-    slug,
-    title,
-    tags,
-    folderId,
-    domainId,
     abTestConfig,
-    isCloaked,
     rotationStart,
     rotationEnd,
     clickLimit,
@@ -67,45 +63,39 @@ export function URLRotatePage() {
     setRotationStart,
     setRotationEnd,
     setClickLimit,
+    getCurrentLinkItem
   } = useLinkParams();
 
+  const ctx  = getCurrentLinkItem();
+  const originalRef = useRef<LinkItem | null>(null);
   const [localTargets, setLocalTargets] = useState<Target[]>([]);
 
   useEffect(() => {
-    setLocalTargets(prev => {
-      return targets.map((t, i) => {
-        const existing = prev[i];
-        return {
-          id: existing?.id ?? nanoid(), // reuse previous id if available
-          ...t,
-        };
-      });
-    });
-  }, [targets]);
+    const current = getCurrentLinkItem();
+
+    if (current.id && originalRef.current?.id !== current.id) {
+      originalRef.current = structuredClone(current);
+      console.log('✅ URLRotatePage:Reinitialized original context for new link:', originalRef.current);
+    }
+
+    const filtered = targets
+      .filter(t => t.url.trim() !== originalUrl.trim())
+      .map(t => ({ id: nanoid(), ...t }));
+    setLocalTargets(filtered);
+  }, [id]);
 
   const syncTargets = (updatedLocal: Target[]) => {
     setLocalTargets(updatedLocal);
-    setTargets(updatedLocal.map(({ id, ...rest }) => rest));
-  };
-
-  const normalizeUrl = (url: string): string => {
-  const trimmed = url.trim();
-
-  if (
-    trimmed.startsWith('http://') ||
-    trimmed.startsWith('https://') ||
-    trimmed.startsWith('localhost') ||
-    trimmed.startsWith('http://localhost') ||
-    trimmed.startsWith('https://localhost')
-  ) {
-    return trimmed;
-  }
-
-  return `https://${trimmed}`;
+    const mapped = updatedLocal.map(({ url, weight }) => ({ url, weight }));
+    setTargets(mapped);
   };
 
   const addTarget = () => {
-    const updated = [...localTargets, { id: nanoid(), url: '', weight: 1 }];
+    const defaultUrl = '';
+    const alreadyExists = localTargets.some(t => t.url.trim() === defaultUrl);
+    if (alreadyExists) return;
+
+    const updated = [...localTargets, { id: nanoid(), url: defaultUrl, weight: 1 }];
     syncTargets(updated);
   };
 
@@ -162,35 +152,25 @@ export function URLRotatePage() {
         weight: baseWeight + (idx < remainder ? 1 : 0),
       }));
 
-      const basePayload = {
-        targets: linkTargets,
-        rotationStart,
-        rotationEnd,
-        clickLimit: clickLimit || null,
-      };
+      setTargets(linkTargets);
 
-      const payload = method === 'POST'
-        ? {
-            ...(originalUrl != null && { originalUrl }),
-            ...(slug != null && { slug }),
-            ...(title != null && { title }),
-            ...(tags != null && { tags }),
-            ...(folderId != null && { folderId }),
-            ...(domainId != null && { domainId }),
-            ...(abTestConfig != null && { abTestConfig }),
-            ...(isCloaked != null && { isCloaked }),
-            ...(shortUrl != null && { shortUrl }),
-            ...basePayload,
-          }
-        : {
-            originalUrl,
-            slug,
-            title,
-            tags,
-            folderId,
-            domainId,
-            ...basePayload,
-          };
+      const original = originalRef.current;
+      const current = getCurrentLinkItem();
+
+      const hasChanged =
+        current.id.trim() === '' || JSON.stringify(current) !== JSON.stringify(original);
+
+      if (!hasChanged) {
+        toast.toast({ title: 'No changes to save.' });
+        return;
+      }
+
+      const payload = generatePayloadFromContext({
+        method,
+        context: ctx,
+        original: original!,
+        current
+      });
 
       const res = await fetch(url, {
         method,
@@ -199,6 +179,8 @@ export function URLRotatePage() {
         body: JSON.stringify(payload),
       });
 
+      const data = await res.json();
+      originalRef.current = JSON.parse(JSON.stringify({ ...current, id: data.targets }));
       toast.toast({ title: id ? 'URL Rotation updated!' : 'URL Rotation created' });
     } catch (err: any) {
       toast.toast({ title: 'Error', description: err.message, variant: 'destructive' });
@@ -210,6 +192,11 @@ export function URLRotatePage() {
       <LinkSettingsSidebar linkId={id} active={pathname} />
 
       <div className="flex-1 space-y-6">
+        <header className="flex items-center justify-between">
+          <Link href="/links" className="flex items-center text-muted-foreground hover:text-foreground">
+            <ChevronLeft className="w-5 h-5 mr-2" /> LINK LIST
+          </Link>
+        </header>
         <Card>
           <CardHeader>
             <CardTitle>URL Rotation</CardTitle>
@@ -299,13 +286,13 @@ export function URLRotatePage() {
               </p>
             </div>
 
-            {/* Save / Cancel */}
+            {/* Actions */}
             <div className="flex justify-end space-x-4 pt-4">
-              <Button variant="outline" onClick={() => router.back()}>
-                <ChevronLeft className="w-4 h-4 mr-1" /> Cancel
-              </Button>
               <Button onClick={handleSave}>
-                <Save className="w-4 h-4 mr-1" /> Save Rotation
+                {id ? 'Save changes' : 'Create & Save'}
+              </Button>
+              <Button variant="outline" onClick={() => router.back()}>
+                Cancel
               </Button>
             </div>
           </CardContent>

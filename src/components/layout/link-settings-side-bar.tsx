@@ -1,4 +1,3 @@
-// src/components/LinkSettingsSidebar.tsx
 'use client';
 
 import Link from 'next/link';
@@ -21,19 +20,23 @@ import {
   Zap,
   Shuffle,
 } from 'lucide-react';
+import { useLinkParams } from '@/context/LinkParamsContext';
 
 export function LinkSettingsSidebar() {
-  // Grab the dynamic segment, if any
   const { id: linkId } = useParams() as { id?: string };
   const pathname = usePathname() || '';
+  const { abTestConfig, targets } = useLinkParams();
 
-  // Determine base path: existing link edits or new-link flow
   const basePath = linkId ? `/links/${linkId}` : '/links';
 
-  // Define all sidebar items (always show these 13 options)
   const items = [
     { label: 'Basic link editing',  href: `${basePath}/basic`,       icon: LinkIcon },
-    { label: 'Link rotation',       href: `${basePath}/rotate`,      icon: Shuffle },
+    {
+      label: 'Link rotation',
+      href: `${basePath}/rotate`,
+      icon: Shuffle,
+      disabled: abTestConfig !== null,
+    },
     { label: 'Mobile targeting',    href: `${basePath}/mobile`,      icon: Smartphone },
     { label: 'Campaign tracking',   href: `${basePath}/campaign`,    icon: Megaphone },
     { label: 'Geo-targeting',       href: `${basePath}/geo`,         icon: Globe },
@@ -41,7 +44,12 @@ export function LinkSettingsSidebar() {
     { label: 'Link cloaking',       href: `${basePath}/cloak`,       icon: Shield },
     { label: 'Password protection', href: `${basePath}/password`,    icon: Lock },
     { label: 'QR code',             href: `${basePath}/qr`,          icon: QrCode },
-    { label: 'A/B testing',         href: `${basePath}/ab`,          icon: Code2 },
+    {
+      label: 'A/B testing',
+      href: `${basePath}/ab`,
+      icon: Code2,
+      disabled: targets.length > 1 && abTestConfig === null
+    },
     { label: 'HTTP Status',         href: `${basePath}/httpstatus`,  icon: Info },
     { label: 'Social media',        href: `${basePath}/social`,      icon: GitMerge },
     { label: 'Link permissions',    href: `${basePath}/permissions`, icon: Users2 },
@@ -53,22 +61,39 @@ export function LinkSettingsSidebar() {
       <CardContent className="p-0">
         <ScrollArea className="h-[calc(100vh-2rem)]">
           <nav className="flex flex-col space-y-1 p-4">
-            {items.map(({ label, href, icon: Icon }) => {
+            {items.map(({ label, href, icon: Icon, disabled }) => {
               const isActive =
                 pathname === href || pathname.startsWith(href + '/');
-              return (
+              const baseClasses =
+                'flex items-center gap-3 rounded-md px-3 py-2 text-sm';
+
+              const linkClasses = disabled
+                ? 'text-gray-500 cursor-not-allowed opacity-70'
+                : isActive
+                  ? 'bg-primary/10 font-medium text-primary'
+                  : 'text-muted-foreground hover:bg-muted/50';
+
+              const iconClasses = disabled
+                ? 'text-gray-400'
+                : isActive
+                  ? 'text-primary'
+                  : 'text-muted-foreground';
+
+              return disabled ? (
+                <div
+                  key={href}
+                  className={`${baseClasses} ${linkClasses}`}
+                >
+                  <Icon className={iconClasses} />
+                  <span>{label}</span>
+                </div>
+              ) : (
                 <Link
                   key={href}
                   href={href}
-                  className={`flex items-center gap-3 rounded-md px-3 py-2 text-sm ${
-                    isActive
-                      ? 'bg-primary/10 font-medium text-primary'
-                      : 'text-muted-foreground hover:bg-muted/50'
-                  }`}
+                  className={`${baseClasses} ${linkClasses}`}
                 >
-                  <Icon
-                    className={isActive ? 'text-primary' : 'text-muted-foreground'}
-                  />
+                  <Icon className={iconClasses} />
                   <span>{label}</span>
                 </Link>
               );

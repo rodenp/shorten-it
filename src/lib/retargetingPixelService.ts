@@ -1,5 +1,5 @@
 
-import { pool, DB_TYPE } from '../../scripts/db';
+import { pool, DB_TYPE } from './db';
 import { RetargetingPixel } from '@/types';
 import { v4 as uuidv4 } from 'uuid'; // For generating unique IDs
 

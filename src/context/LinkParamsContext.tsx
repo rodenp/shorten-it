@@ -21,7 +21,6 @@ interface LinkParamsContextType {
   clickCount: number;
   createdAt: string;
   updatedAt: string;
-  customDomain: string;
   isCloaked: boolean;
   deepLinkConfig: LinkItem['deepLinkConfig'] | null;
   abTestConfig: ABTestConfig;
@@ -38,9 +37,12 @@ interface LinkParamsContextType {
   rotationEnd: string | null;
   clickLimit: number | null;
   isLoading: boolean;
+  getCurrentLinkItem: () => LinkItem;
+  setLinkItem: (item: LinkItem) => void;
 
   // setters for editable fields
   setDomain: (d?: string) => void;
+  setDomainId: (d: string) => void;
   setOriginalUrl: (val: string) => void;
   setShortUrl: (val: string) => void;
   setSlug: (val: string) => void;
@@ -57,6 +59,7 @@ interface LinkParamsContextType {
   setClickCount: (val: number) => void;
   initialize: (item: LinkItem) => void;
   setTargets: (targets: LinkTarget[]) => void;
+  setId: (id: string) => void;
   clear: () => void;
 }
 
@@ -70,6 +73,9 @@ const LinkParamsContext = createContext<LinkParamsContextType | undefined>(undef
 
 export function LinkParamsProvider({ children }: { children: ReactNode }) {
   const [linkItem, setLinkItemState] = useState<LinkItem | null>(null);
+  const setLinkItem = (item: LinkItem) => {
+    setLinkItemState(item);
+  };
   const [id, setId] = useState('');
   const [userId, setUserId] = useState('');
   const [originalUrl, setOriginalUrl] = useState('');
@@ -79,10 +85,9 @@ export function LinkParamsProvider({ children }: { children: ReactNode }) {
   const [clickCount, setClickCount] = useState(0);
   const [createdAt, setCreatedAt] = useState('');
   const [updatedAt, setUpdatedAt] = useState('');
-  const [customDomain, setCustomDomain] = useState('');
   const [isCloaked, setIsCloaked] = useState(false);
   const [deepLinkConfig, setDeepLinkConfig] = useState<LinkItem['deepLinkConfig'] | null>(null);
-  const [abTestConfig, setAbTestConfig] = useState<ABTestConfig>(defaultABConfig);
+  const [abTestConfig, setAbTestConfig] = useState<ABTestConfig | null>(null);
   const [retargetingPixels, setRetargetingPixels] = useState<RetargetingPixel[]>([]);
   const [tags, setTags] = useState<string[]>([]);
   const [title, setTitle] = useState('');
@@ -97,8 +102,36 @@ export function LinkParamsProvider({ children }: { children: ReactNode }) {
   const [clickLimit, setClickLimit] = useState<number | null>(null);
   const [isLoading, setIsLoading] = useState(false);
 
+  const getCurrentLinkItem = (): LinkItem => ({
+        id,
+        userId,
+        originalUrl,
+        shortUrl,
+        domainId,
+        slug,
+        clickCount,
+        createdAt,
+        updatedAt,
+        domain,
+        isCloaked,
+        deepLinkConfig,
+        abTestConfig,
+        retargetingPixels,
+        tags,
+        title,
+        groupId,
+        groupName,
+        lastUsedTargetIndex,
+        targets,
+        folderId,
+        domain,
+        rotationStart,
+        rotationEnd,
+        clickLimit,
+        isLoading,
+    });
+
   const initialize = (item: LinkItem) => {
-    setLinkItemState(item);
     setId(item.id);
     setUserId(item.userId || '');
     setOriginalUrl(item.originalUrl || '');
@@ -108,10 +141,9 @@ export function LinkParamsProvider({ children }: { children: ReactNode }) {
     setClickCount(item.clickCount || 0);
     setCreatedAt(item.createdAt || '');
     setUpdatedAt(item.updatedAt || '');
-    setCustomDomain(item.customDomain || '');
     setIsCloaked(item.isCloaked ?? false);
     setDeepLinkConfig(item.deepLinkConfig || null);
-    setAbTestConfig(item.abTestConfig || defaultABConfig);
+    setAbTestConfig(item.abTestConfig || null);
     setRetargetingPixels(item.retargetingPixels || []);
     setTags(item.tags || []);
     setTitle(item.title || '');
@@ -124,11 +156,15 @@ export function LinkParamsProvider({ children }: { children: ReactNode }) {
     setRotationStart(item.rotationStart || null);
     setRotationEnd(item.rotationEnd || null);
     setClickLimit(item.clickLimit || null);
+    setDomainId(item.domainId || '');
+    setDomain(item.domain || undefined);
+    setIsLoading(false);
+    //setLinkItemState(item);
     // domain remains driven by page logic
   };
 
   const clear = () => {
-    setLinkItemState(null);
+    //setLinkItemState(null);
     setId('');
     setUserId('');
     setOriginalUrl('');
@@ -138,10 +174,9 @@ export function LinkParamsProvider({ children }: { children: ReactNode }) {
     setClickCount(0);
     setCreatedAt('');
     setUpdatedAt('');
-    setCustomDomain('');
     setIsCloaked(false);
     setDeepLinkConfig(null);
-    setAbTestConfig(defaultABConfig);
+    setAbTestConfig(null);
     setRetargetingPixels([]);
     setTags([]);
     setTitle('');
@@ -171,7 +206,6 @@ export function LinkParamsProvider({ children }: { children: ReactNode }) {
         clickCount,
         createdAt,
         updatedAt,
-        customDomain,
         isCloaked,
         deepLinkConfig,
         abTestConfig,
@@ -202,6 +236,11 @@ export function LinkParamsProvider({ children }: { children: ReactNode }) {
         setTags,
         setIsCloaked,
         initialize,
+        setDomainId,
+        getCurrentLinkItem,
+        setId,
+        setLinkItem,
+        setAbTestConfig,
         clear,
       }}
     >
