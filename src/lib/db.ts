@@ -2,7 +2,8 @@
 import { MongoClient, ServerApiVersion } from 'mongodb';
 import { Pool } from 'pg';
 import { debugLog } from '@/lib/logging';
-import { applyMigrations } from './migrations'; // Import applyMigrations
+// import { applyMigrations } from './migrations'; // Removed old import
+import { runMigrations } from '../../scripts/migrations'; // Added new import
 
 const MONGODB_URI = process.env.MONGODB_URI;
 const POSTGRES_URI = process.env.POSTGRES_URI;
@@ -75,19 +76,17 @@ if (DB_TYPE === 'mongodb') {
 
   (async () => {
     try {
-      await createPostgresTables(); // Ensures base tables are there
+      await createPostgresTables(); // Connection check
       if (pool) { // Ensure pool is initialized before using
-        await applyMigrations(pool); // Apply pending migrations
-        debugLog('[DB Init] Migrations applied successfully.');
+        await runMigrations(pool); // Use runMigrations from /scripts/migrations.ts
+        debugLog('[DB Init] runMigrations executed successfully.');
       } else {
         console.error('[DB Init] PostgreSQL pool not initialized before attempting migrations.');
-        // Potentially throw an error or handle this state if critical
       }
-    } catch (e: any) { // Catch errors from both createPostgresTables and applyMigrations
-      console.error("[DB Init] Failed to initialize PostgreSQL tables or apply migrations:", e.message, e.stack);
-      // Depending on the application's needs, you might want to exit the process
-      // if the database schema cannot be prepared correctly.
-      // process.exit(1); // Example: Exit if DB setup fails critically
+    } catch (e: any) { // Catch errors from both createPostgresTables and runMigrations
+      console.error("[DB Init] Failed to initialize PostgreSQL tables or run migrations:", e.message, e.stack);
+      // Consider if process should exit on critical DB setup/migration failure
+      // process.exit(1); 
     }
   })();
 
