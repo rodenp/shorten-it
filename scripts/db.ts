@@ -13,6 +13,15 @@ let client = null;
 let clientPromise = null;
 let pool = null;
 
+const isBuildTime = process.env.npm_lifecycle_event === 'build';
+
+if (isBuildTime) {
+  console.log('[DB] Initializing PostgreSQL pool during build');
+  pool = new Pool({ connectionString: POSTGRES_URI });
+} else {
+  console.log('[DB] Skipping pool init (runtime)');
+}
+
 // createPostgresTables remains as a helper, potentially for connection checks or basic setup if ever needed outside migrations.
 // For now, it's just a connection check as migrations handle DDL.
 async function createPostgresTables() {
