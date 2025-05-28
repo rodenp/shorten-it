@@ -69,9 +69,14 @@
     COPY --from=source_code /app/repo_content/public ./public
     # next.config.ts is at the root of what was copied into builder (which was /app/repo_content/)
     COPY --from=builder /app/next.config.ts ./next.config.ts 
-    
-    EXPOSE ${PORT}
-    
-    CMD ["npm", "run", "start"]
-    
+
+    COPY --from=builder /app/scripts ./scripts
+    COPY --from=builder /app/tsconfig.json ./tsconfig.json
+    COPY --from=builder /app/src ./src
+
+    COPY docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
+    RUN chmod +x /usr/local/bin/docker-entrypoint.sh
+
+    ENTRYPOINT ["docker-entrypoint.sh"]
+    CMD ["start"] 
     

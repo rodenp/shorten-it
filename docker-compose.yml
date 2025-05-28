@@ -4,6 +4,7 @@ services:
       context: .
       dockerfile: Dockerfile
       args:
+        GIT_BRANCH: ${GIT_BRANCH}
         DB_TYPE: ${DB_TYPE:-postgres} 
         POSTGRES_URI: ${POSTGRES_URI} # Changed from POSTGRES_URL
         DATABASE_URL: ${DATABASE_URL} 
@@ -24,6 +25,8 @@ services:
       # POSTGRES_URL=postgresql://user:password@db:5432/shorten_it_db
       # DB_TYPE=postgres # Should also be in .env
     restart: unless-stopped
+    #volumes:
+    #  - ./src:/app/src
     networks:
       - proxy
     labels:
