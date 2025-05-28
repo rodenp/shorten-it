@@ -1,5 +1,5 @@
 
-import { pool, DB_TYPE } from './db';
+import { pool, DB_TYPE } from '../../scripts/db';
 import { TeamMember, UserProfile, User } from '@/types';
 import { v4 as uuidv4 } from 'uuid';
 import { randomBytes } from 'crypto';
