@@ -1,5 +1,5 @@
 
-import { DB_TYPE, pool, clientPromise } from '@/lib/db';
+import { DB_TYPE, pool, clientPromise } from '../../scripts/db';
 import type { DomainType } from '@/types'; 
 import { Collection, Db, ObjectId } from 'mongodb';
 import { debugLog } from '@/lib/logging';

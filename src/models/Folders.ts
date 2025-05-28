@@ -1,4 +1,4 @@
-import { pool } from '@/lib/db';
+import { pool } from '../../scripts/db';
 
 export interface Folder {
   id: string;
