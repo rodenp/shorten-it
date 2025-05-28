@@ -2,7 +2,7 @@
 import { NextResponse } from 'next/server';
 import bcrypt from 'bcryptjs';
 import { UserModel } from '@/models/User';
-import { DB_TYPE, createPostgresTables } from '@/lib/db'; // Import createPostgresTables
+import { DB_TYPE, createPostgresTables } from '../../../../../scripts/db';// Import createPostgresTables
 
 export async function POST(request: Request) {
   try {

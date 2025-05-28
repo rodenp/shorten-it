@@ -1,5 +1,5 @@
 // src/models/Subscription.ts
-import { pool } from '@/lib/db';
+import { pool } from '../../scripts/db';
 
 export interface Plan {
   id: string;
