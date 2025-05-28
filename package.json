@@ -8,6 +8,7 @@
     "genkit:watch": "genkit start -- tsx --watch src/ai/dev.ts",
     "build": "next build && cp -r .next/static .next/standalone/.next/static",
     "start": "node .next/standalone/server.js",
+    "start:safe": "node scripts/start-app.js",
     "lint": "next lint",
     "typecheck": "tsc --noEmit"
   },

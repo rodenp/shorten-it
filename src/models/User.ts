@@ -1,5 +1,5 @@
 
-import { DB_TYPE, clientPromise, pool } from '@/lib/db';
+import { DB_TYPE, clientPromise, pool } from '../../scripts/db'; // Updated path
 import { Collection, Db, ObjectId } from 'mongodb'; // Ensure ObjectId is imported
 import bcrypt from 'bcryptjs'; // Import bcrypt for password hashing
 
