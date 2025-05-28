@@ -1,5 +1,5 @@
 
-import { DB_TYPE, pool, clientPromise } from '@/lib/db';
+import { DB_TYPE, pool, clientPromise } from '../../scripts/db';
 import { Collection, Db, ObjectId } from 'mongodb';
 
 export interface LinkGroup {
