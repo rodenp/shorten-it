@@ -9,6 +9,7 @@
     "build": "next build && cp -r .next/static .next/standalone/.next/static",
     "start": "node .next/standalone/server.js",
     "start:safe": "node scripts/start-app.js",
+    "start:test": "node scripts/start-test.mjs",
     "lint": "next lint",
     "typecheck": "tsc --noEmit"
   },

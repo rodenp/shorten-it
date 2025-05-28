@@ -2,6 +2,8 @@ import { MongoClient, ServerApiVersion } from 'mongodb';
 import { Pool } from 'pg';
 import { debugLog } from '@/lib/logging';
 import { runMigrations } from './migrations'; // Adjusted import path
+import dotenv from 'dotenv';
+dotenv.config();
 
 const MONGODB_URI = process.env.MONGODB_URI;
 const POSTGRES_URI = process.env.POSTGRES_URI;
