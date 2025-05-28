@@ -1,23 +1,23 @@
-import { MongoClient, ServerApiVersion } from 'mongodb';
-import { Pool } from 'pg';
-import { debugLog } from '@/lib/logging';
-import { runMigrations } from './migrations'; // Adjusted import path
-import dotenv from 'dotenv';
+const { MongoClient, ServerApiVersion } = require('mongodb');
+const { Pool } = require('pg');
+const { debugLog } = require ('../src/lib/logging');
+const { runMigrations } = require('./migrations');
+const dotenv = require('dotenv');
 dotenv.config();
 
 const MONGODB_URI = process.env.MONGODB_URI;
 const POSTGRES_URI = process.env.POSTGRES_URI;
-export const DB_TYPE = process.env.DB_TYPE || 'mongodb'; // Default to mongodb, export for use elsewhere
+const DB_TYPE = process.env.DB_TYPE || 'mongodb'; // Default to mongodb
 
-let client: MongoClient | null = null;
-let clientPromise: Promise<MongoClient> | null = null;
-let pool: Pool | null = null;
+let client = null;
+let clientPromise = null;
+let pool = null;
 
 pool = new Pool({ connectionString: POSTGRES_URI });
 
 // createPostgresTables remains as a helper, potentially for connection checks or basic setup if ever needed outside migrations.
 // For now, it's just a connection check as migrations handle DDL.
-export async function createPostgresTables() {
+async function createPostgresTables() {
   if (!pool) {
     // This function should only be called if pool is already initialized by initializeDatabase
     console.error('[DB] createPostgresTables called before pool was initialized. This should not happen.');
@@ -34,7 +34,7 @@ export async function createPostgresTables() {
   }
 }
 
-export async function initializeDatabase(): Promise<{ pool: Pool | null; clientPromise: Promise<MongoClient> | null }> {
+async function initializeDatabase() {
   if (DB_TYPE === 'mongodb') {
     if (!MONGODB_URI) {
       throw new Error('DB_TYPE is "mongodb", but MONGODB_URI is not defined. Set MONGODB_URI environment variable.');
@@ -42,17 +42,14 @@ export async function initializeDatabase(): Promise<{ pool: Pool | null; clientP
     if (!clientPromise) { // Initialize only if not already done
       console.log('[DB Init] Initializing MongoDB connection...');
       if (process.env.NODE_ENV === 'development') {
-        const globalWithMongo = global as typeof globalThis & {
-          _mongoClientPromise?: Promise<MongoClient>;
-        };
-        if (!globalWithMongo._mongoClientPromise) {
+        if (!global._mongoClientPromise) {
           client = new MongoClient(MONGODB_URI, {
             serverApi: { version: ServerApiVersion.v1, strict: true, deprecationErrors: true }
           });
-          globalWithMongo._mongoClientPromise = client.connect();
+          global._mongoClientPromise = client.connect();
           console.log('[DB Init] MongoDB development client promise created.');
         }
-        clientPromise = globalWithMongo._mongoClientPromise;
+        clientPromise = global._mongoClientPromise;
       } else {
         client = new MongoClient(MONGODB_URI, {
           serverApi: { version: ServerApiVersion.v1, strict: true, deprecationErrors: true }
@@ -63,7 +60,7 @@ export async function initializeDatabase(): Promise<{ pool: Pool | null; clientP
       try {
         await clientPromise; // Await connection to ensure it's successful during initialization
         console.log('[DB Init] MongoDB connected successfully.');
-      } catch (e: any) {
+      } catch (e) {
         console.error("[DB Init] Failed to connect to MongoDB:", e.message, e.stack);
         clientPromise = null; // Reset on failure
         client = null;
@@ -92,7 +89,7 @@ export async function initializeDatabase(): Promise<{ pool: Pool | null; clientP
 
         await runMigrations(pool); 
         console.log('[DB Init] runMigrations executed successfully for PostgreSQL.');
-      } catch (e: any) {
+      } catch (e) {
         console.error("[DB Init] Failed to initialize PostgreSQL tables or run migrations:", e.message, e.stack);
         pool = null; // Reset on failure
         throw e; // Re-throw error to be handled by caller
@@ -107,4 +104,10 @@ export async function initializeDatabase(): Promise<{ pool: Pool | null; clientP
 
 // Export the pool and clientPromise. Their values will be set after initializeDatabase is called.
 // Other parts of the application will import these and can use them once initialization is complete.
-export { clientPromise, pool };
+module.exports = { 
+  initializeDatabase, 
+  DB_TYPE, 
+  clientPromise, 
+  pool,
+  createPostgresTables
+};

@@ -7,7 +7,7 @@ const { spawn } = require('child_process');
 // If using ts-node or a similar runtime, it might resolve .ts directly.
 // This script is in /app/scripts/ and the db module is also in /app/scripts/
 // So, the relative path is './db'
-const { initializeDatabase, DB_TYPE } = require('./db');
+const { initializeDatabase, DB_TYPE } = require('./db.ts');
 
 async function main() {
   console.log('[Startup Script] Initializing application...');

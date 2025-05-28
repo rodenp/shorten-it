@@ -39,6 +39,7 @@ if (DB_TYPE === 'mongodb') {
 } else if (DB_TYPE === 'postgres') {
   if (!pool) {
     const errorMessage = 'PostgreSQL pool is not initialized. Check lib/db.ts and .env file for POSTGRES_URI.';
+    console.log('POSTGRES_URI=', process.env.POSTGRES_URI);
     console.error(errorMessage);
     throw new Error(errorMessage);
   }
