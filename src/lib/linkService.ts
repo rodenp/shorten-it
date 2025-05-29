@@ -1,5 +1,5 @@
 
-import { pool, DB_TYPE } from './db'; // Ensure DB_TYPE is imported
+import { pool, DB_TYPE } from '../../scripts/db'; // Ensure DB_TYPE is imported
 import { LinkItem, LinkTarget, RetargetingPixel } from '@/types';
 import { v4 as uuidv4 } from 'uuid';
 import { getShortenerDomain } from './mock-data'; 
