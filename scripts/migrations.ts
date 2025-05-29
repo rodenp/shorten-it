@@ -388,6 +388,121 @@ export async function runMigrations(poolParam?: PgPool) {
           await client.query('CREATE INDEX IF NOT EXISTS "link_domainId_idx" ON links("domainId");');
           console.log("[Migration '1.0.1'] Index on links(domainId) ensured.");
 
+          await client.query(
+            `CREATE TABLE IF NOT EXISTS folders (
+              id SERIAL PRIMARY KEY,
+              "userId" TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+              name TEXT NOT NULL,
+              "createdAt" TIMESTAMPTZ NOT NULL DEFAULT now()
+            );`
+          );
+          console.log("[Migration '1.0.0'] Created folders table.");
+
+          await client.query(
+            `ALTER TABLE links
+              ADD COLUMN IF NOT EXISTS "folderId" INTEGER REFERENCES folders(id) ON DELETE SET NULL;`
+          );
+          console.log("[Migration '1.0.0'] Altered links table for folderId.");
+
+          await client.query(
+            `CREATE TABLE IF NOT EXISTS plans (
+              id TEXT PRIMARY KEY,
+              name TEXT NOT NULL,
+              price NUMERIC NOT NULL,
+              period TEXT NOT NULL,
+              "limit" BIGINT NOT NULL
+            );`
+          );
+          console.log("[Migration '1.0.0'] Created plans table.");
+
+          await client.query(
+            `CREATE TABLE IF NOT EXISTS features (
+              id SERIAL PRIMARY KEY,
+              key TEXT UNIQUE NOT NULL,
+              label TEXT NOT NULL,
+              section TEXT NOT NULL
+            );`
+          );
+          console.log("[Migration '1.0.0'] Created features table.");
+          
+          await client.query(
+            `CREATE TABLE IF NOT EXISTS plan_features (
+              plan_id TEXT REFERENCES plans(id) ON DELETE CASCADE,
+              feature_id INT REFERENCES features(id) ON DELETE CASCADE,
+              PRIMARY KEY (plan_id, feature_id)
+            );`
+          );
+          console.log("[Migration '1.0.0'] Created plan_features table.");
+
+          await client.query(
+            `CREATE TABLE IF NOT EXISTS subscriptions (
+              "userId"          TEXT        PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+              "planId"          TEXT        NOT NULL REFERENCES plans(id),
+              "nextBillingDate" TIMESTAMP   NULL,
+              usage             BIGINT      NOT NULL DEFAULT 0,
+              "limit"           BIGINT      NOT NULL
+            );`
+          );
+          console.log("[Migration '1.0.0'] Created subscriptions table.");
+
+          // Seed initial data for plans and features
+          const { rowCount: planRowCount } = await client.query('SELECT 1 FROM plans LIMIT 1');
+          if (!planRowCount) {
+            await client.query(
+              `INSERT INTO plans (id,name,price,period,"limit") VALUES
+                ('free','Free',0,'Monthly',50000),
+                ('hobby','Hobby',5,'Monthly',0),
+                ('personal','Personal',18,'Monthly',0),
+                ('team','Team',48,'Monthly',0),
+                ('enterprise','Enterprise',148,'Monthly',0)
+              ;`
+            );
+            console.log("[Migration '1.0.0'] Seeded plans data.");
+
+            const allFeatures = [
+              { key: 'users', label: 'Users', section: 'Core' }, { key: 'domains', label: 'Custom domains', section: 'Core' },
+              { key: 'branded', label: 'Branded links total', section: 'Core' }, { key: 'automation', label: 'Link automation (year 1)', section: 'Core' },
+              { key: 'redirects', label: 'Redirects', section: 'Core' }, { key: 'clicks', label: 'Tracked clicks', section: 'Core' },
+              { key: 'country', label: 'Country targeting', section: 'Advanced' }, { key: 'region', label: 'Region targeting', section: 'Advanced' },
+              { key: 'expireDate', label: 'Link expiration by Date', section: 'Advanced' }, { key: 'encryption', label: 'End-to-end link encryption', section: 'Advanced' },
+              { key: 'expireClick', label: 'Link expiration by Click Limit', section: 'Advanced' }, { key: 'cloaking', label: 'Link cloaking', section: 'Advanced' },
+              { key: 'referrer', label: 'Referrer hiding', section: 'Advanced' }, { key: 'password', label: 'Password protection', section: 'Advanced' },
+              { key: 'deeplinks', label: 'Deep links', section: 'Advanced' }, { key: 'multiteams', label: 'Multiple teams', section: 'Advanced' },
+              { key: 'sso', label: 'Single sign-on (SSO)', section: 'Advanced' }, { key: 'uptime', label: 'SLA of 99,9% uptime', section: 'Advanced' },
+              { key: 'exportS3', label: 'Export raw click data to S3', section: 'Advanced' }, { key: 'agreements', label: 'Custom agreements', section: 'Advanced' },
+              { key: 'ai', label: 'AI Assistant', section: 'Advanced' }, { key: 'destUrl', label: 'Destination URL updating', section: 'Essentials' },
+              { key: 'api', label: 'API', section: 'Essentials' }, { key: 'slugEdit', label: 'URL shortcode (slug) editing', section: 'Essentials' },
+              { key: 'ssl', label: "SSL (by Let's Encrypt)", section: 'Essentials' }, { key: 'mobile', label: 'Mobile targeting', section: 'Essentials' },
+              { key: 'chat', label: 'Chat support', section: 'Essentials' }, { key: 'tags', label: 'Tags for links', section: 'Essentials' },
+              { key: 'qr', label: 'QR code', section: 'Essentials' }, { key: 'mainPage', label: 'Main page redirect', section: 'Essentials' },
+              { key: '404', label: '404 redirect', section: 'Essentials' }, { key: '301', label: '301 redirect code', section: 'Essentials' },
+              { key: 'integrations', label: 'App integrations', section: 'Essentials' }, { key: 'tools', label: 'Tools & Extensions', section: 'Essentials' },
+              { key: 'utm', label: 'UTM builder', section: 'Essentials' }, { key: 'gdpr', label: 'GDPR privacy', section: 'Essentials' },
+              { key: 'import', label: 'Link import', section: 'Essentials' }, { key: 'export', label: 'Link export', section: 'Essentials' },
+              { key: 'ab', label: 'A/B Testing', section: 'Essentials' },
+            ];
+            for (const feat of allFeatures) {
+              await client.query('INSERT INTO features (key, label, section) VALUES ($1,$2,$3);', [feat.key, feat.label, feat.section]);
+            }
+            console.log("[Migration '1.0.0'] Seeded features data.");
+
+            const planFeatureMap: Record<string, string[]> = {
+              free: ['users','domains','branded','redirects','clicks'],
+              hobby: ['users','domains','branded','redirects','clicks','referrer'],
+              personal: ['users','domains','branded','automation','redirects','clicks','cloaking','expireDate','password'],
+              team: ['users','domains','branded','automation','redirects','clicks','cloaking','expireDate','password','deeplinks','region','sso'],
+              enterprise: allFeatures.map(f => f.key)
+            };
+            for (const [planId, feats] of Object.entries(planFeatureMap)) {
+              for (const key of feats) {
+                await client.query('INSERT INTO plan_features (plan_id, feature_id) SELECT $1, f.id FROM features f WHERE f.key = $2;', [planId, key]);
+              }
+            }
+            console.log("[Migration '1.0.0'] Seeded plan_features data.");
+          } else {
+            console.log("[Migration '1.0.0'] Plans data already exists, skipping seed.");
+          }
+
           await client.query('COMMIT;');
           console.log("[Migration '1.0.1'] Applied successfully (committed).");
         } catch (err: any) {
