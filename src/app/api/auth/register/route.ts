@@ -17,10 +17,14 @@ export async function POST(request: Request) {
       }
     }
 
-    const { name, email, password } = await request.json();
+    const { name, email, password, termsAccepted } = await request.json();
 
     if (!name || !email || !password) {
       return NextResponse.json({ message: 'Missing required fields (name, email, password).' }, { status: 400 });
+    }
+
+    if (termsAccepted !== true) {
+      return NextResponse.json({ message: 'You must accept the terms and conditions to register.' }, { status: 400 });
     }
 
     if (password.length < 8) {
@@ -38,6 +42,7 @@ export async function POST(request: Request) {
       name,
       email,
       password: hashedPassword,
+      termsAcceptedAt: new Date(), // Set termsAcceptedAt if termsAccepted is true
       // emailVerified and image can be null or set later
     });
 
