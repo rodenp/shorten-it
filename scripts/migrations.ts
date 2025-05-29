@@ -313,6 +313,18 @@ export async function runMigrations(poolParam?: PgPool) {
           await client.query('BEGIN;');
           console.log("[Migration '1.0.1'] Transaction started.");
 
+          await client.query(`
+            ALTER TABLE links ADD COLUMN "rotation_start" TIMESTAMPTZ;` 
+          );
+          await client.query(`
+            ALTER TABLE links ADD COLUMN "rotation_end" TIMESTAMPTZ;` 
+          );
+          await client.query(`
+            ALTER TABLE links ADD COLUMN "click_limit" INTEGER;` 
+          );
+
+          console.log("[Migration '1.0.1'] Links table rotation columns added.");
+
           // Check if custom_domains table exists before trying to select from it
           const customDomainsTableExistsRes = await client.query("SELECT to_regclass('custom_domains') AS name;");
           const subDomainsTableExistsRes = await client.query("SELECT to_regclass('sub_domains') AS name;");
