@@ -13,7 +13,7 @@ let client = null;
 let clientPromise = null;
 let pool = null;
 
-const allowedLifecycleEvents = ['build', 'start'];
+const allowedLifecycleEvents = ['build', 'start', 'dev'];
 
 // Detect current event (from NPM) or fallback flag (for Docker)
 const currentEvent = process.env.npm_lifecycle_event;
