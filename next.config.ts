@@ -22,6 +22,10 @@ const nextConfig: NextConfig = {
     ],
   },
 
+  env: {
+    NEXTAUTH_URL: process.env.NEXTAUTH_URL,
+  },
+
   async headers() {
     return [
       {
@@ -42,7 +46,6 @@ const nextConfig: NextConfig = {
 
   experimental: {
     allowedDevOrigins: [
-      '9000-firebase-studio-1746992730513.cluster-axf5tvtfjjfekvhwxwkkkzsk2y.cloudworkstations.dev',
     ],
     // Other experimental flags available in Next.js 15 if needed
     // reactCompiler: true,

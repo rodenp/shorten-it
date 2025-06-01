@@ -48,6 +48,7 @@ export async function middleware(request: NextRequest) {
     }
   }
 
+<<<<<<< Updated upstream
   // ✅ APPLY ONLY TO lnker.me
   const baseDomain = 'lnker.me';
   if (!hostname?.endsWith(baseDomain)) {
@@ -55,15 +56,25 @@ export async function middleware(request: NextRequest) {
   }
 
   // ✅ Extract subdomain if present
+=======
+  const baseDomain = process.env.NEXT_PUBLIC_SHORTENER_DOMAIN;
+  const appSubdomainAndScheme = process.env.APP_URL;
+  const appSubdomain = new URL(process.env.APP_URL!).hostname;
+  const isAppHost = hostname === appSubdomain;
+
+  debugLog(`[MiddlewareV6 - ENTRY] Request for pathname: '${pathname}'. appSubdomain: ${appSubdomain}, Determined host: ${hostname} (from ${determinedHostForLog})`);
+
+>>>>>>> Stashed changes
   let subdomain: string | null = null;
   if (hostname !== baseDomain && hostname.endsWith(`.${baseDomain}`)) {
     subdomain = hostname.replace(`.${baseDomain}`, '');
     request.headers.set('x-subdomain', subdomain);
-    debugLog(`[MiddlewareV6] Detected subdomain: ${subdomain}`);
+    debugLog(`[MiddlewareV6] Detected appSubdomain = ${appSubdomain}, subdomain: ${subdomain}`);
   }
 
-  debugLog(`[MiddlewareV6] Hostname: ${hostname}, Pathname: '${pathname}'`);
+  debugLog(`[MiddlewareV6] appsubdomain: ${appSubdomain} Hostname: ${hostname}, Pathname: '${pathname}'`);
 
+<<<<<<< Updated upstream
   if (
     pathname.startsWith('/_next') ||
     pathname.startsWith('/static') ||
@@ -81,6 +92,12 @@ export async function middleware(request: NextRequest) {
       // @ts-ignore
       return nextAuthMiddleware(request);
     } else if (pathname.startsWith('/api/internal/validate-api-key')) {
+=======
+  if (isAppHost) {
+    debugLog(`[MiddlewareV6-DEBUG] in isAppHost condition: appsubdomain: ${appSubdomain} Hostname: ${hostname}, Pathname: '${pathname}`);
+    if (pathname.startsWith('/_next') || pathname.startsWith('/static') || ['.+', '/manifest.json', '/robots.txt', '/favicon.ico'].includes(pathname)) {
+      debugLog(`[MiddlewareV6-DEBUG] Path '${pathname}' is a static/framework asset. Calling NextResponse.next().`);
+>>>>>>> Stashed changes
       return NextResponse.next();
     } else {
       const authHeader = request.headers.get('Authorization');
@@ -147,12 +164,20 @@ export async function middleware(request: NextRequest) {
       // @ts-ignore
       return nextAuthMiddleware(request);
     }
+  } else {
+      debugLog(`[MiddlewareV6-DEBUG] NOT in isAppHost condition: appsubdomain: ${appSubdomain} Hostname: ${hostname}, Pathname: '${pathname}`);
+  }
+
+  if (pathname.startsWith('/api')) {
+    debugLog(`[MiddlewareV6-DEBUG] pathname starts with /api skipping: request.url: ${request.url} appsubdomain: ${appSubdomain} Hostname: ${hostname}, Pathname: '${pathname}`);
+    return NextResponse.next();
   }
 
   // Slug rewrites for public short URLs
   const isAppRoute = protectedAppRoutesPrefixes.some(prefix => pathname.startsWith(prefix));
   const isAuthRoutePage = authRoutes.includes(pathname);
 
+<<<<<<< Updated upstream
   if (pathname !== '/' && !isAppRoute && !isAuthRoutePage) {
     const slug = decodeURIComponent(pathname.substring(1));
     if (slug) {
@@ -163,6 +188,25 @@ export async function middleware(request: NextRequest) {
       newHeaders.set('x-link-redirect-lookup', 'true');
       return NextResponse.rewrite(rewriteUrl, { request: { headers: newHeaders } });
     }
+=======
+  if (pathname && pathname !== '/' && !isAppHost) {
+      debugLog(`[MiddlewareV6-DEBUG] Pathname '${pathname}' ENTERED SLUG REWRITE Block's main IF condition.`);
+      const slug = decodeURIComponent(pathname.substring(1));
+      if (slug) {
+        debugLog(`[MiddlewareV6-DEBUG] Slug detected: '${slug}' for pathname '${pathname}, hostname=${hostname}, subdomain=${subdomain}'. Preparing to rewrite.`);
+        const rewriteUrl = new URL(`/api/internal/redirect/${slug}${search}`, appSubdomainAndScheme);
+        const newHeaders = new Headers(request.headers);
+        if (hostname) newHeaders.set('x-original-host', hostname);
+        if (subdomain) newHeaders.set('x-subdomain', subdomain);
+        newHeaders.set('x-link-redirect-lookup', 'true');
+        debugLog(`[MiddlewareV6-ACTION] REWRITING slug '${slug}' for pathname '${pathname}' to: ${rewriteUrl.toString()}`);
+        return NextResponse.rewrite(rewriteUrl, { request: { headers: newHeaders } });
+      } else {
+        debugWarn(`[MiddlewareV6-DEBUG] Pathname '${pathname}' entered slug block, but extracted slug was empty. Passing to nextAuthMiddleware.`);
+        // @ts-ignore
+        return NextResponse.next();
+      }
+>>>>>>> Stashed changes
   }
 
   // Default protected route check

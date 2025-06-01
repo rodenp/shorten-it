@@ -1,5 +1,6 @@
 // src/app/api/internal/redirect/[slug]/route.ts
 import { NextResponse, type NextRequest } from 'next/server';
+import { redirect } from 'next/navigation';
 import {
   getLinkBySlugAndDomain,
   incrementLinkClickCount,
@@ -77,6 +78,7 @@ export async function GET(request: NextRequest, context: { params?: { slug?: str
 
   const resolvedParams = await Promise.resolve(context.params);
   const slug = resolvedParams?.slug;
+  const baseUrl = process.env.NEXT_PUBLIC_SHORTENER_DOMAIN;
   
   if (!slug) {
     console.error('[RedirectRouteV10-NoGeoIP] Slug was not resolved. Check routing and params.');
@@ -92,6 +94,7 @@ export async function GET(request: NextRequest, context: { params?: { slug?: str
   debugLog('[RedirectRouteV10-NoGeoIP] Processing slug ' + slug + ' for host ' + originalHost + '.');
 
   try {
+
     const link = await getLinkBySlugAndDomain(slug, originalHost);
     debugLog('[RedirectRouteV10-NoGeoIP] Link fetched for ' + slug + ': ', JSON.stringify(link, null, 2));
 
@@ -185,5 +188,5 @@ export async function GET(request: NextRequest, context: { params?: { slug?: str
   }
 
   debugWarn('[RedirectRouteV10-NoGeoIP] Fallback: Redirecting to homepage due to error or link not found for slug ' + (slug || "UNKNOWN_SLUG") + '.');
-  return NextResponse.redirect(new URL('/?error=link_processing_failed', request.url));
+  return redirect(`${baseUrl}/not-found`);
 }
