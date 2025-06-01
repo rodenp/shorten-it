@@ -1,10 +1,13 @@
+
 import { NextResponse, type NextRequest } from 'next/server';
 import { DEFAULT_LOGIN_REDIRECT, authRoutes, publicRoutes, protectedAppRoutesPrefixes } from "@/lib/auth-routes";
 import { withAuth } from 'next-auth/middleware';
 import { debugLog, debugWarn } from '@/lib/logging';
+// REMOVED direct import of ApiKeyModel for Edge compatibility in middleware
+// import { ApiKeyModel, type ApiKey } from '@/models/ApiKey'; 
 
 function hasApiPermission(apiKeyPermissions: string[], requiredPermission: string): boolean {
-  if (!requiredPermission) return true;
+  if (!requiredPermission) return true; 
   return apiKeyPermissions.includes(requiredPermission);
 }
 
@@ -21,42 +24,39 @@ const nextAuthMiddleware = withAuth({
       const isAuthRoute = authRoutes.includes(pathname);
       const isPublicRoute = publicRoutes.includes(pathname);
       const isApiAuthRoute = pathname.startsWith("/api/auth");
-      if (isApiAuthRoute || isAuthRoute) return true;
-      if (isPublicRoute && !token && !protectedAppRoutesPrefixes.some(prefix => pathname.startsWith(prefix))) return true;
-      if (token) return true;
-      return false;
+      if (isApiAuthRoute || isAuthRoute) return true; 
+      if (isPublicRoute && !token && !protectedAppRoutesPrefixes.some(prefix => pathname.startsWith(prefix))) return true; 
+      if (token) return true; 
+      return false; 
     },
   },
 });
 
 export async function middleware(request: NextRequest) {
+  debugLog("RUNNING LATEST MIDDLEWARE - Firebase Studio V6 Host Detection"); 
   const { pathname, search } = request.nextUrl;
   const originalRequestUrl = request.url;
   const forwardedHost = request.headers.get('x-forwarded-host');
   const hostHeader = request.headers.get('host');
-
+  let determinedHostForLog = ''; 
   let hostname: string | null = null;
+
   if (forwardedHost) {
-    hostname = forwardedHost.split(',')[0].trim();
+      hostname = forwardedHost.split(',')[0].trim(); 
+      determinedHostForLog = `x-forwarded-host (${hostname})`;
   } else if (hostHeader) {
-    hostname = hostHeader;
+      hostname = hostHeader;
+      determinedHostForLog = `host header (${hostname})`;
   } else if (originalRequestUrl) {
-    try {
-      hostname = new URL(originalRequestUrl).hostname;
-    } catch (e) {
-      console.error('[MiddlewareV6] Error parsing URL for hostname:', e);
-    }
+      try {
+          hostname = new URL(originalRequestUrl).hostname;
+          determinedHostForLog = `URL object fallback (${hostname})`;
+      } catch (e) {
+          console.error('[MiddlewareV6] Error parsing originalRequestUrl for hostname fallback:', e);
+          determinedHostForLog = 'Error/Unavailable';
+      }
   }
 
-<<<<<<< Updated upstream
-  // ✅ APPLY ONLY TO lnker.me
-  const baseDomain = 'lnker.me';
-  if (!hostname?.endsWith(baseDomain)) {
-    return NextResponse.next(); // 👈 skip middleware for other domains
-  }
-
-  // ✅ Extract subdomain if present
-=======
   const baseDomain = process.env.NEXT_PUBLIC_SHORTENER_DOMAIN;
   const appSubdomainAndScheme = process.env.APP_URL;
   const appSubdomain = new URL(process.env.APP_URL!).hostname;
@@ -64,7 +64,6 @@ export async function middleware(request: NextRequest) {
 
   debugLog(`[MiddlewareV6 - ENTRY] Request for pathname: '${pathname}'. appSubdomain: ${appSubdomain}, Determined host: ${hostname} (from ${determinedHostForLog})`);
 
->>>>>>> Stashed changes
   let subdomain: string | null = null;
   if (hostname !== baseDomain && hostname.endsWith(`.${baseDomain}`)) {
     subdomain = hostname.replace(`.${baseDomain}`, '');
@@ -74,95 +73,99 @@ export async function middleware(request: NextRequest) {
 
   debugLog(`[MiddlewareV6] appsubdomain: ${appSubdomain} Hostname: ${hostname}, Pathname: '${pathname}'`);
 
-<<<<<<< Updated upstream
-  if (
-    pathname.startsWith('/_next') ||
-    pathname.startsWith('/static') ||
-    ['.+', '/manifest.json', '/robots.txt', '/favicon.ico'].includes(pathname)
-  ) {
-    return NextResponse.next();
-  }
-
-  if (pathname.startsWith('/api/internal/redirect/')) {
-    return NextResponse.next();
-  }
-
-  if (pathname.startsWith('/api/')) {
-    if (pathname.startsWith('/api/auth/')) {
-      // @ts-ignore
-      return nextAuthMiddleware(request);
-    } else if (pathname.startsWith('/api/internal/validate-api-key')) {
-=======
   if (isAppHost) {
     debugLog(`[MiddlewareV6-DEBUG] in isAppHost condition: appsubdomain: ${appSubdomain} Hostname: ${hostname}, Pathname: '${pathname}`);
     if (pathname.startsWith('/_next') || pathname.startsWith('/static') || ['.+', '/manifest.json', '/robots.txt', '/favicon.ico'].includes(pathname)) {
       debugLog(`[MiddlewareV6-DEBUG] Path '${pathname}' is a static/framework asset. Calling NextResponse.next().`);
->>>>>>> Stashed changes
       return NextResponse.next();
-    } else {
-      const authHeader = request.headers.get('Authorization');
-      if (authHeader && authHeader.startsWith('Bearer ')) {
-        const apiKeyString = authHeader.substring(7);
-        if (apiKeyString) {
-          let apiKeyValidationApiResponse;
-          let apiKeyInfo: { success: boolean; userId?: string; permissions?: string[]; message?: string } | null = null;
-          try {
-            const internalValidateUrl = new URL('/api/internal/validate-api-key', request.nextUrl.origin);
-            apiKeyValidationApiResponse = await fetch(internalValidateUrl.toString(), {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ apiKey: apiKeyString }),
-            });
-            if (apiKeyValidationApiResponse.ok) {
-              apiKeyInfo = await apiKeyValidationApiResponse.json();
-            } else if (apiKeyValidationApiResponse.status === 401) {
-              const errorData = await apiKeyValidationApiResponse.json();
-              return NextResponse.json({ message: errorData.message || 'Invalid API Key' }, { status: 401 });
-            }
-          } catch (e) {
-            console.error('[MiddlewareV6] Error calling API key validation:', e);
-          }
+    }
 
-          if (apiKeyInfo?.success && apiKeyInfo.userId && apiKeyInfo.permissions) {
-            let requiredPermission = '';
-            if (pathname.startsWith('/api/links')) {
-              if (['POST', 'PUT', 'DELETE'].includes(request.method)) requiredPermission = 'links:write';
-              else if (request.method === 'GET') requiredPermission = 'links:read';
-            } else if (pathname.startsWith('/api/analytics')) {
-              requiredPermission = 'analytics:read';
-            } else if (pathname.startsWith('/api/domains')) {
-              if (['POST', 'PUT', 'DELETE'].includes(request.method)) requiredPermission = 'domains:write';
-              else requiredPermission = 'domains:read';
-            } else if (pathname.startsWith('/api/folders')) {
-              if (['POST', 'PUT', 'DELETE'].includes(request.method)) requiredPermission = 'domains:write';
-              else requiredPermission = 'domains:read';
-            } else if (pathname.startsWith('/api/campaign-templates')) {
-              if (['POST', 'PUT', 'DELETE'].includes(request.method)) requiredPermission = 'campaigns:write';
-              else requiredPermission = 'campaigns:read';
-            } else if (pathname.startsWith('/api/retargeting-pixels')) {
-              if (['POST', 'PUT', 'DELETE'].includes(request.method)) requiredPermission = 'pixels:write';
-              else requiredPermission = 'pixels:read';
+    if (pathname.startsWith('/api/internal/redirect/')) {
+      debugLog(`[MiddlewareV6-DEBUG] Path '${pathname}' is internal redirect API. Calling NextResponse.next().`);
+      return NextResponse.next();
+    }
+    
+    // API Route Handling
+    if (pathname.startsWith('/api/')) {
+      if (pathname.startsWith('/api/auth/')) {
+        debugLog(`[MiddlewareV6-DEBUG] Path '${pathname}' is an auth API. Passing to nextAuthMiddleware.`);
+        // @ts-ignore
+        return nextAuthMiddleware(request);
+      } else if (pathname.startsWith('/api/internal/validate-api-key')) {
+        // This internal route is called by this middleware itself, should bypass further auth in middleware.
+        // It has its own logic and runtime (Node.js).
+        debugLog(`[MiddlewareV6-DEBUG] Path '${pathname}' is internal validate-api-key. Calling NextResponse.next().`);
+        return NextResponse.next();
+      } else {
+        debugLog(`[MiddlewareV6-DEBUG] Path '${pathname}' is a non-auth, non-internal API. Checking for API Key.`);
+        const authHeader = request.headers.get('Authorization');
+        if (authHeader && authHeader.startsWith('Bearer ')) {
+          const apiKeyString = authHeader.substring(7);
+          if (apiKeyString) {
+            let apiKeyValidationApiResponse;
+            let apiKeyInfo: { success: boolean; userId?: string; permissions?: string[]; message?: string } | null = null;
+            try {
+              const internalValidateUrl = new URL('/api/internal/validate-api-key', request.nextUrl.origin);
+              apiKeyValidationApiResponse = await fetch(internalValidateUrl.toString(), {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ apiKey: apiKeyString }),
+              });
+              if (apiKeyValidationApiResponse.ok) {
+                apiKeyInfo = await apiKeyValidationApiResponse.json();
+              } else {
+                debugWarn(`[MiddlewareV6-DEBUG] Internal API key validation failed with status: ${apiKeyValidationApiResponse.status}`);
+                if (apiKeyValidationApiResponse.status === 401) {
+                  const errorData = await apiKeyValidationApiResponse.json();
+                  return NextResponse.json({ message: errorData.message || 'Invalid API Key' }, { status: 401 });
+                }
+              }
+            } catch (e) {
+              console.error('[MiddlewareV6] Error calling internal API key validation route:', e);
+              // Treat as if no valid key was found and let session auth handle it, or return a generic server error for API key attempt.
+              // For now, let it fall through to session auth if API key validation system itself fails.
             }
 
-            if (hasApiPermission(apiKeyInfo.permissions, requiredPermission)) {
-              const requestHeaders = new Headers(request.headers);
-              requestHeaders.set('x-api-user-id', apiKeyInfo.userId);
-              requestHeaders.set('x-api-key-permissions', apiKeyInfo.permissions.join(','));
-              requestHeaders.set('x-api-key-authenticated', 'true');
-              if (subdomain) requestHeaders.set('x-subdomain', subdomain);
-              return NextResponse.next({ request: { headers: requestHeaders } });
-            } else {
-              return NextResponse.json({ message: `Missing permission: ${requiredPermission}` }, { status: 403 });
+            if (apiKeyInfo && apiKeyInfo.success && apiKeyInfo.userId && apiKeyInfo.permissions) {
+              debugLog(`[MiddlewareV6-DEBUG] Valid API Key (via internal route) for user: ${apiKeyInfo.userId}, permissions: ${apiKeyInfo.permissions.join(', ')}`);
+              let requiredPermission = '';
+              if (pathname.startsWith('/api/links')) {
+                if (request.method === 'POST' || request.method === 'PUT' || request.method === 'DELETE') requiredPermission = 'links:write';
+                else if (request.method === 'GET') requiredPermission = 'links:read';
+              } else if (pathname.startsWith('/api/analytics')) {
+                requiredPermission = 'analytics:read';
+              } else if (pathname.startsWith('/api/custom-domains')) {
+                  if (request.method === 'POST' || request.method === 'PUT' || request.method === 'DELETE') requiredPermission = 'domains:write';
+                  else if (request.method === 'GET') requiredPermission = 'domains:read';
+              } else if (pathname.startsWith('/api/campaign-templates')) {
+                  if (request.method === 'POST' || request.method === 'PUT' || request.method === 'DELETE') requiredPermission = 'campaigns:write';
+                  else if (request.method === 'GET') requiredPermission = 'campaigns:read';
+              } else if (pathname.startsWith('/api/retargeting-pixels')) {
+                  if (request.method === 'POST' || request.method === 'PUT' || request.method === 'DELETE') requiredPermission = 'pixels:write';
+                  else if (request.method === 'GET') requiredPermission = 'pixels:read';
+              }
+              // Add more specific route/method to permission mappings here
+
+              if (hasApiPermission(apiKeyInfo.permissions, requiredPermission)) {
+                debugLog(`[MiddlewareV6-DEBUG] API Key has required permission: ${requiredPermission || 'none'}`);
+                const requestHeaders = new Headers(request.headers);
+                requestHeaders.set('x-api-user-id', apiKeyInfo.userId);
+                requestHeaders.set('x-api-key-permissions', apiKeyInfo.permissions.join(','));
+                requestHeaders.set('x-api-key-authenticated', 'true');
+                return NextResponse.next({ request: { headers: requestHeaders } });
+              } else {
+                debugWarn(`[MiddlewareV6-DEBUG] API Key for user ${apiKeyInfo.userId} missing required permission: ${requiredPermission}`);
+                return NextResponse.json({ message: `API Key missing required permission: ${requiredPermission}` }, { status: 403 });
+              }
+            } else if (apiKeyValidationApiResponse && !apiKeyValidationApiResponse.ok && apiKeyValidationApiResponse.status !== 401) {
+              return NextResponse.json({ message: 'API Key validation service error' }, { status: 500 });
             }
-          } else if (!apiKeyValidationApiResponse?.ok && apiKeyValidationApiResponse.status !== 401) {
-            return NextResponse.json({ message: 'API key validation error' }, { status: 500 });
           }
-        }
+        } // End of API Key check
+        debugLog(`[MiddlewareV6-DEBUG] No/invalid API Key for '${pathname}', or validation call failed. Passing to nextAuthMiddleware for session check.`);
+        // @ts-ignore
+        return nextAuthMiddleware(request);
       }
-
-      // Fallback to next-auth
-      // @ts-ignore
-      return nextAuthMiddleware(request);
     }
   } else {
       debugLog(`[MiddlewareV6-DEBUG] NOT in isAppHost condition: appsubdomain: ${appSubdomain} Hostname: ${hostname}, Pathname: '${pathname}`);
@@ -173,22 +176,12 @@ export async function middleware(request: NextRequest) {
     return NextResponse.next();
   }
 
-  // Slug rewrites for public short URLs
+  // Slug rewriting and default auth for pages
+  debugLog(`[MiddlewareV6 - PRE-SLUG-CHECK] Pathname: '${pathname}'. Evaluating if it is a slug.`);
   const isAppRoute = protectedAppRoutesPrefixes.some(prefix => pathname.startsWith(prefix));
   const isAuthRoutePage = authRoutes.includes(pathname);
+  debugLog(`[MiddlewareV6 - PRE-SLUG-VARS] For pathname '${pathname}': isAppRoute=${isAppRoute}, isAuthRoutePage=${isAuthRoutePage}`);
 
-<<<<<<< Updated upstream
-  if (pathname !== '/' && !isAppRoute && !isAuthRoutePage) {
-    const slug = decodeURIComponent(pathname.substring(1));
-    if (slug) {
-      const rewriteUrl = new URL(`/api/internal/redirect/${slug}${search}`, originalRequestUrl);
-      const newHeaders = new Headers(request.headers);
-      if (hostname) newHeaders.set('x-original-host', hostname);
-      if (subdomain) newHeaders.set('x-subdomain', subdomain);
-      newHeaders.set('x-link-redirect-lookup', 'true');
-      return NextResponse.rewrite(rewriteUrl, { request: { headers: newHeaders } });
-    }
-=======
   if (pathname && pathname !== '/' && !isAppHost) {
       debugLog(`[MiddlewareV6-DEBUG] Pathname '${pathname}' ENTERED SLUG REWRITE Block's main IF condition.`);
       const slug = decodeURIComponent(pathname.substring(1));
@@ -206,16 +199,15 @@ export async function middleware(request: NextRequest) {
         // @ts-ignore
         return NextResponse.next();
       }
->>>>>>> Stashed changes
   }
 
-  // Default protected route check
+  debugLog(`[MiddlewareV6-DEBUG] Pathname '${pathname}' did NOT enter SLUG REWRITE Block's main IF. Passing to nextAuthMiddleware for default auth protection/handling.`);
   // @ts-ignore
   return nextAuthMiddleware(request);
 }
 
 export const config = {
   matcher: [
-    '/((?!_next/static|_next/image|favicon.ico|api/internal/validate-api-key).*)',
+    '/((?!_next/static|_next/image|favicon.ico|api/internal/validate-api-key).*)', // Exclude validate-api-key from general matcher if it causes loops
   ],
 };
