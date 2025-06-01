@@ -169,7 +169,7 @@ export async function getLinkBySlugAndDomain(slug: string, domain: string): Prom
                cd."domainName" as "domainName"
         FROM links l
         JOIN domains cd ON l."domainId" = cd.id
-        WHERE l.slug = $1 AND cd."domainName" = $2 AND cd.verified = TRUE; 
+        WHERE l.slug = $1 AND cd."domainName" = $2; 
       `; 
       queryParams = [slug, domain];
     }
